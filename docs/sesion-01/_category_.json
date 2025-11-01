@@ -1,0 +1,8 @@
+{
+  "label": "Sesión 1: Testing Unitario",
+  "position": 1,
+  "link": {
+    "type": "generated-index",
+    "description": "Introducción al testing unitario con Jest. Aprende los fundamentos del testing, cómo escribir tests efectivos y cómo testear componentes de React."
+  }
+}

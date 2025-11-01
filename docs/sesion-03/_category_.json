@@ -1,0 +1,8 @@
+{
+  "label": "Sesión 3: Testing E2E con Cypress",
+  "position": 3,
+  "link": {
+    "type": "generated-index",
+    "description": "Testing End-to-End con Cypress. Aprende a testear flujos completos de usuario, interceptar peticiones y crear custom commands."
+  }
+}
