@@ -90,7 +90,7 @@ const config: Config = {
             },
             {
               label: 'Documentación',
-              to: '/docs/intro',
+              to: '/docs/',
             },
           ],
         },
