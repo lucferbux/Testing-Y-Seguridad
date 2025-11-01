@@ -20,4 +20,45 @@
   display: flex;
   align-items: center;
   justify-content: center;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.features {
+  padding: 4rem 0;
+}
+
+.sessionCard {
+  background: var(--ifm-card-background-color);
+  border: 1px solid var(--ifm-color-emphasis-300);
+  border-radius: 8px;
+  padding: 1.5rem;
+  margin-bottom: 1.5rem;
+  transition: all 0.3s ease;
+}
+
+.sessionCard:hover {
+  border-color: var(--ifm-color-primary);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+  transform: translateY(-2px);
+}
+
+.sessionCard h4 {
+  margin-bottom: 0.75rem;
+  color: var(--ifm-color-primary);
+}
+
+.sessionCard p {
+  margin-bottom: 1rem;
+  color: var(--ifm-color-emphasis-700);
+}
+
+.sessionCard a {
+  font-weight: 600;
+  color: var(--ifm-color-primary);
+  text-decoration: none;
+}
+
+.sessionCard a:hover {
+  text-decoration: underline;
 }

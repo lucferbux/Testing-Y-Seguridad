@@ -41,26 +41,10 @@ const config: Config = {
       {
         docs: {
           sidebarPath: './sidebars.ts',
-          // Please change this to your repo.
-          // Remove this to remove the "edit this page" links.
           editUrl:
-            'https://github.com/facebook/docusaurus/tree/main/packages/create-docusaurus/templates/shared/',
+            'https://github.com/lucferbux/Taller-Docusaurus/tree/main/',
         },
-        blog: {
-          showReadingTime: true,
-          feedOptions: {
-            type: ['rss', 'atom'],
-            xslt: true,
-          },
-          // Please change this to your repo.
-          // Remove this to remove the "edit this page" links.
-          editUrl:
-            'https://github.com/facebook/docusaurus/tree/main/packages/create-docusaurus/templates/shared/',
-          // Useful options to enforce blogging best practices
-          onInlineTags: 'warn',
-          onInlineAuthors: 'warn',
-          onUntruncatedBlogPosts: 'warn',
-        },
+        blog: false, // Deshabilitar el blog
         theme: {
           customCss: './src/css/custom.css',
         },
@@ -87,9 +71,8 @@ const config: Config = {
           position: 'left',
           label: 'Contenido',
         },
-        {to: '/blog', label: 'Blog', position: 'left'},
         {
-          href: 'https://github.com/lucferbux',
+          href: 'https://github.com/lucferbux/Taller-Docusaurus',
           label: 'GitHub',
           position: 'right',
         },
@@ -99,46 +82,62 @@ const config: Config = {
       style: 'dark',
       links: [
         {
-          title: 'Docs',
+          title: 'Contenido',
           items: [
             {
-              label: 'Tutorial',
+              label: 'Inicio',
+              to: '/',
+            },
+            {
+              label: 'Documentación',
               to: '/docs/intro',
             },
           ],
         },
         {
-          title: 'Community',
+          title: 'Sesiones',
           items: [
             {
-              label: 'Stack Overflow',
-              href: 'https://stackoverflow.com/questions/tagged/docusaurus',
+              label: 'Testing Unitario',
+              to: '/docs/sesion-01/intro',
             },
             {
-              label: 'Discord',
-              href: 'https://discordapp.com/invite/docusaurus',
+              label: 'Testing de Integración',
+              to: '/docs/sesion-02/intro',
             },
             {
-              label: 'X',
-              href: 'https://x.com/docusaurus',
+              label: 'Testing E2E con Cypress',
+              to: '/docs/sesion-03/intro',
+            },
+            {
+              label: 'Seguridad',
+              to: '/docs/sesion-04/intro',
             },
           ],
         },
         {
-          title: 'More',
+          title: 'Recursos',
           items: [
             {
-              label: 'Blog',
-              to: '/blog',
+              label: 'Jest',
+              href: 'https://jestjs.io/',
+            },
+            {
+              label: 'Cypress',
+              href: 'https://www.cypress.io/',
+            },
+            {
+              label: 'OWASP Top 10',
+              href: 'https://owasp.org/www-project-top-ten/',
             },
             {
               label: 'GitHub',
-              href: 'https://github.com/facebook/docusaurus',
+              href: 'https://github.com/lucferbux/Taller-Docusaurus',
             },
           ],
         },
       ],
-      copyright: `Copyright © ${new Date().getFullYear()} My Project, Inc. Built with Docusaurus.`,
+      copyright: `Copyright © ${new Date().getFullYear()} Máster Full Stack - Testing y Seguridad. Built with Docusaurus.`,
     },
     prism: {
       theme: prismThemes.github,

@@ -6,25 +6,156 @@
 
 /* You can override the default Infima variables here. */
 :root {
-  --ifm-color-primary: #2e8555;
-  --ifm-color-primary-dark: #29784c;
-  --ifm-color-primary-darker: #277148;
-  --ifm-color-primary-darkest: #205d3b;
-  --ifm-color-primary-light: #33925d;
-  --ifm-color-primary-lighter: #359962;
-  --ifm-color-primary-lightest: #3cad6e;
+  /* Color principal: Azul profesional para testing/tech */
+  --ifm-color-primary: #0066cc;
+  --ifm-color-primary-dark: #005bb8;
+  --ifm-color-primary-darker: #0056ad;
+  --ifm-color-primary-darkest: #00478f;
+  --ifm-color-primary-light: #0073e6;
+  --ifm-color-primary-lighter: #0078f0;
+  --ifm-color-primary-lightest: #1a8cff;
+  
+  /* Color secundario: Verde azulado para mejor contraste */
+  --ifm-color-secondary: #059669;
+  --ifm-color-secondary-dark: #047857;
+  --ifm-color-secondary-darker: #065f46;
+  --ifm-color-secondary-darkest: #064e3b;
+  --ifm-color-secondary-light: #10b981;
+  --ifm-color-secondary-lighter: #34d399;
+  --ifm-color-secondary-lightest: #6ee7b7;
+  
+  /* Tipografía */
   --ifm-code-font-size: 95%;
-  --docusaurus-highlighted-code-line-bg: rgba(0, 0, 0, 0.1);
+  --ifm-font-family-base: 'Inter', system-ui, -apple-system, sans-serif;
+  
+  /* Espaciado */
+  --ifm-spacing-horizontal: 1.5rem;
+  
+  /* Línea de código resaltada */
+  --docusaurus-highlighted-code-line-bg: rgba(0, 102, 204, 0.1);
+  
+  /* Cards */
+  --ifm-card-background-color: #ffffff;
 }
 
 /* For readability concerns, you should choose a lighter palette in dark mode. */
 [data-theme='dark'] {
-  --ifm-color-primary: #25c2a0;
-  --ifm-color-primary-dark: #21af90;
-  --ifm-color-primary-darker: #1fa588;
-  --ifm-color-primary-darkest: #1a8870;
-  --ifm-color-primary-light: #29d5b0;
-  --ifm-color-primary-lighter: #32d8b4;
-  --ifm-color-primary-lightest: #4fddbf;
-  --docusaurus-highlighted-code-line-bg: rgba(0, 0, 0, 0.3);
+  /* Modo oscuro: Azul más claro y vibrante */
+  --ifm-color-primary: #4d94ff;
+  --ifm-color-primary-dark: #3385ff;
+  --ifm-color-primary-darker: #267dff;
+  --ifm-color-primary-darkest: #0062e6;
+  --ifm-color-primary-light: #66a3ff;
+  --ifm-color-primary-lighter: #73abff;
+  --ifm-color-primary-lightest: #99c2ff;
+  
+  /* Color secundario en dark mode: Verde azulado más brillante */
+  --ifm-color-secondary: #34d399;
+  --ifm-color-secondary-dark: #10b981;
+  --ifm-color-secondary-darker: #059669;
+  --ifm-color-secondary-darkest: #047857;
+  --ifm-color-secondary-light: #6ee7b7;
+  --ifm-color-secondary-lighter: #a7f3d0;
+  --ifm-color-secondary-lightest: #d1fae5;
+  
+  /* Background más suave */
+  --ifm-background-color: #1a1a1a;
+  --ifm-background-surface-color: #242424;
+  
+  /* Línea de código resaltada */
+  --docusaurus-highlighted-code-line-bg: rgba(77, 148, 255, 0.15);
+  
+  /* Cards en dark mode */
+  --ifm-card-background-color: #242424;
+}
+
+/* Mejoras visuales adicionales */
+.hero--primary {
+  background: linear-gradient(135deg, var(--ifm-color-primary) 0%, #0052a3 100%);
+}
+
+[data-theme='dark'] .hero--primary {
+  background: linear-gradient(135deg, #1a5fb4 0%, #0066cc 100%);
+}
+
+/* Mejorar legibilidad de código */
+code {
+  border-radius: 4px;
+  padding: 0.15rem 0.4rem;
+  background-color: rgba(0, 102, 204, 0.08);
+  color: var(--ifm-color-primary);
+}
+
+[data-theme='dark'] code {
+  background-color: rgba(77, 148, 255, 0.12);
+  color: var(--ifm-color-primary-lighter);
+}
+
+/* Botones mejorados */
+.button {
+  border-radius: 8px;
+  font-weight: 600;
+  transition: all 0.2s ease;
+}
+
+.button:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(0, 102, 204, 0.2);
+}
+
+/* Botón secundario con mejor contraste */
+.button--secondary {
+  background-color: var(--ifm-color-secondary);
+  border-color: var(--ifm-color-secondary);
+  color: #ffffff;
+}
+
+.button--secondary:hover {
+  background-color: var(--ifm-color-secondary-dark);
+  border-color: var(--ifm-color-secondary-dark);
+  color: #ffffff;
+  box-shadow: 0 4px 12px rgba(5, 150, 105, 0.3);
+}
+
+[data-theme='dark'] .button--secondary:hover {
+  box-shadow: 0 4px 12px rgba(52, 211, 153, 0.3);
+}
+
+/* Links más visibles */
+a {
+  transition: color 0.2s ease;
+}
+
+/* Tablas más elegantes */
+table {
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+/* Admonitions (callouts) personalizados */
+.admonition {
+  border-radius: 8px;
+}
+
+/* Footer mejorado con mejor contraste */
+.footer {
+  background-color: var(--ifm-background-surface-color);
+}
+
+.footer a {
+  color: var(--ifm-color-secondary-light);
+  font-weight: 500;
+}
+
+.footer a:hover {
+  color: var(--ifm-color-secondary-lighter);
+  text-decoration: none;
+}
+
+[data-theme='dark'] .footer a {
+  color: var(--ifm-color-secondary);
+}
+
+[data-theme='dark'] .footer a:hover {
+  color: var(--ifm-color-secondary-light);
 }
