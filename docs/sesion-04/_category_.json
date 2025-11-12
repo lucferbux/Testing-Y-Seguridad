@@ -1,8 +1,0 @@
-{
-  "label": "Sesión 4: Seguridad y Desarrollo Seguro",
-  "position": 4,
-  "link": {
-    "type": "generated-index",
-    "description": "Seguridad en aplicaciones web. OWASP Top 10, prevención de vulnerabilidades, Helmet.js, validación y gestión de secretos."
-  }
-}

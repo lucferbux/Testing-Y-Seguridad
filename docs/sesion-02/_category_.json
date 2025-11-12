@@ -1,8 +1,0 @@
-{
-  "label": "Sesión 2: Testing de Integración",
-  "position": 2,
-  "link": {
-    "type": "generated-index",
-    "description": "Testing de integración con Jest y React Testing Library. Aprende a testear la interacción entre componentes, Context API y llamadas a APIs."
-  }
-}

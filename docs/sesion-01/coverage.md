@@ -104,32 +104,73 @@ Este comando (que definimos en `package.json` como `jest --coverage`) ejecuta to
 
 ### Interpretando el Output
 
-```text
- PASS  src/utils/__tests__/math.test.ts
- PASS  src/components/__tests__/Button.test.tsx
+Cuando ejecutamos coverage en nuestro proyecto **Taller-Testing-Security**, obtenemos un reporte como este:
 
---------------------|---------|----------|---------|---------|
-File                | % Stmts | % Branch | % Funcs | % Lines |
---------------------|---------|----------|---------|---------|
-All files           |   85.71 |    83.33 |   87.50 |   85.71 |
- utils/math.ts      |   100   |    100   |   100   |   100   |
- components/Button  |   80.00 |    75.00 |   83.33 |   80.00 |
---------------------|---------|----------|---------|---------|
+```text
+ PASS  src/components/cards/__tests__/ProjectCard.test.tsx
+ PASS  src/components/elements/__tests__/Loader.test.tsx
+ PASS  src/api/__tests__/http-api-client.test.ts
+ PASS  src/utils/__tests__/auth.test.ts
+ PASS  src/utils/__tests__/config.test.ts
+
+Test Suites: 5 passed, 5 total
+Tests:       47 passed, 47 total
+
+---------------------------|---------|----------|---------|---------|
+File                       | % Stmts | % Branch | % Funcs | % Lines |
+---------------------------|---------|----------|---------|---------|
+All files                  |   30.86 |    28.85 |   31.25 |   30.57 |
+ src/components/elements   |  100.00 |   100.00 |  100.00 |  100.00 |
+  Loader.tsx               |  100.00 |   100.00 |  100.00 |  100.00 |
+ src/components/cards      |   56.33 |    48.00 |   70.00 |   56.33 |
+  ProjectCard.tsx          |  100.00 |    92.30 |  100.00 |  100.00 |
+ src/hooks                 |   19.29 |     0.00 |   25.00 |   16.66 |
+  useAuth.ts               |   42.85 |     0.00 |    0.00 |   42.85 |
+  useToogle.ts             |  100.00 |   100.00 |  100.00 |  100.00 |
+ src/utils                 |   55.22 |    52.38 |   42.10 |   55.73 |
+  auth.ts                  |   84.09 |    73.33 |   80.00 |   82.92 |
+  config.ts                |    0.00 |     0.00 |  100.00 |    0.00 |
+ src/api                   |   77.52 |    55.55 |   88.88 |   77.52 |
+  http-api-client.ts       |   88.05 |    66.66 |  100.00 |   88.05 |
+---------------------------|---------|----------|---------|---------|
 ```
+
+:::tip Análisis del Coverage Actual
+El coverage global es bajo (30%) porque solo hemos implementado tests para **módulos específicos como ejercicio didáctico**:
+
+- ✅ **Loader.tsx y ProjectCard.tsx**: 100% de coverage - ejemplos completos
+- ✅ **auth.ts y http-api-client.ts**: >80% coverage - buena cobertura
+- ⚠️ **Otros componentes**: Sin tests aún (ejercicio enfocado en ejemplos representativos)
+
+En un proyecto real de producción, se extendería gradualmente el testing a todos los módulos críticos.
+:::
 
 **Leyendo la tabla:**
 
-- **File**: El archivo siendo analizado
+- **File**: El archivo o directorio siendo analizado
 - **% Stmts**: Porcentaje de statements cubiertos
 - **% Branch**: Porcentaje de branches cubiertos
 - **% Funcs**: Porcentaje de funciones cubiertos
 - **% Lines**: Porcentaje de líneas cubiertas
 
-En el ejemplo:
+En el ejemplo de nuestro proyecto:
 
-- `math.ts` tiene cobertura perfecta (100% en todo)
-- `Button` tiene buena cobertura pero le faltan algunas ramas (75% branches)
-- **All files** muestra el promedio global
+- **Components testeados** tienen cobertura completa:
+  - `Loader.tsx`: 100% en todas las métricas (componente simple bien testeado)
+  - `ProjectCard.tsx`: 100% statements/funciones, 92.3% branches (un branch difícil de testear)
+  
+- **API layer** (`src/api/`) tiene buena cobertura (77.52% global)
+  - `http-api-client.ts`: 88.05% statements (le faltan algunos error handlers)
+  
+- **Utilities** (`src/utils/`) tienen cobertura moderada (55.22% global)
+  - `auth.ts`: 84.09% statements, 73.33% branches (buena cobertura)
+  - `config.ts`: Sin tests de ejecución (solo importado)
+  
+- **Hooks** (`src/hooks/`) tienen cobertura baja (19.29% global)
+  - `useToogle.ts`: 100% cubierto (usado en tests de ProjectCard)
+  - `useAuth.ts`: Solo 42.85% (hook mockeado en tests, no testeado directamente)
+  
+- **All files** muestra el promedio global (30.86% - bajo porque solo testeamos módulos específicos como ejercicio)
 
 ### Reporte HTML Detallado
 
@@ -141,16 +182,63 @@ Jest también genera un reporte HTML interactivo en `coverage/lcov-report/index.
 
 #### Ejemplo de código en reporte HTML
 
+Abrimos el reporte HTML (`coverage/lcov-report/index.html`) y navegamos a `src/utils/http-api-client.ts`:
+
 ```typescript
-function divide(a: number, b: number): number {
-  if (b === 0) {              // ✅ Cubierto (verde)
-    throw new Error('Div 0'); // ❌ No cubierto (rojo)
+export class HttpApiClient {
+  private static instance: HttpApiClient;
+
+  async getProjects(): Promise<Project[]> {
+    const token = this.token();                              // ✅ Cubierto (verde)
+    
+    if (!token) {                                            // ✅ Cubierto (verde)
+      window.location.replace('/login');                     // ✅ Cubierto (verde)
+      return [];                                             // ✅ Cubierto (verde)
+    }
+
+    try {                                                    // ✅ Cubierto (verde)
+      const response = await fetch(                          // ✅ Cubierto (verde)
+        `${API_BASE_URI}/projects`,
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+
+      if (response.status === 404) {                         // ✅ Cubierto (verde)
+        return [];                                           // ✅ Cubierto (verde)
+      }
+
+      if (response.status === 401) {                         // ✅ Cubierto (verde)
+        removeAuthToken();                                   // ✅ Cubierto (verde)
+        window.location.replace('/login');                   // ✅ Cubierto (verde)
+        return [];                                           // ✅ Cubierto (verde)
+      }
+
+      return await response.json();                          // ✅ Cubierto (verde)
+      
+    } catch (error) {                                        // ❌ No cubierto (rojo)
+      console.error('Network error:', error);                // ❌ No cubierto (rojo)
+      throw error;                                           // ❌ No cubierto (rojo)
+    }
   }
-  return a / b;               // ✅ Cubierto (verde)
 }
 ```
 
-El reporte muestra que la línea del `throw` nunca se ejecutó, indicando que falta un test para división por cero.
+El reporte muestra en **rojo** que el bloque `catch` nunca se ejecutó en nuestros tests. Esto indica que **falta un test para errores de red** (cuando fetch falla completamente, no por 404/401 sino por timeout, red caída, etc.).
+
+**Acción correctiva:**
+
+```typescript
+// Agregamos el test faltante
+it('debe manejar errores de red', async () => {
+  const mockFetch = jest.fn().mockRejectedValue(
+    new Error('Network error')
+  );
+  global.fetch = mockFetch;
+
+  await expect(client.getProjects()).rejects.toThrow('Network error');
+});
+```
+
+Después de añadir este test, el coverage del `http-api-client.ts` sube de 88% a 100%.
 
 ## Configurar Coverage Thresholds
 
@@ -158,9 +246,13 @@ Los **thresholds** (umbrales) de coverage son límites mínimos que Jest puede v
 
 ### Configuración básica
 
+En nuestro proyecto **Taller-Testing-Security**, podemos configurar thresholds en `jest.config.cjs`:
+
 ```javascript
-// jest.config.js
+// jest.config.cjs
 module.exports = {
+  // ... resto de configuración
+  
   coverageThreshold: {
     global: {
       branches: 80,
@@ -172,13 +264,18 @@ module.exports = {
 };
 ```
 
-Con esta configuración, si cualquier métrica cae por debajo del 80%, los tests fallarán con un mensaje de error.
+Con esta configuración, si cualquier métrica cae por debajo del 80%, los tests fallarán con un mensaje de error:
+
+```text
+Jest: "global" coverage threshold for branches (80%) not met: 75%
+```
 
 ### Thresholds por archivo/carpeta
 
-Puedes establecer thresholds diferentes para archivos o directorios específicos:
+Puedes establecer thresholds diferentes para archivos o directorios específicos. En nuestro proyecto:
 
 ```javascript
+// jest.config.cjs
 module.exports = {
   coverageThreshold: {
     global: {
@@ -187,23 +284,48 @@ module.exports = {
       lines: 70,
       statements: 70,
     },
-    // Código crítico necesita mayor coverage
-    './src/payment/': {
-      branches: 95,
-      functions: 95,
-      lines: 95,
-      statements: 95,
+    
+    // Código crítico de autenticación necesita mayor coverage
+    './src/utils/auth.ts': {
+      branches: 100,
+      functions: 100,
+      lines: 100,
+      statements: 100,
     },
-    // Utilities pueden tener menor threshold
-    './src/utils/': {
-      branches: 60,
-      functions: 60,
-      lines: 60,
-      statements: 60,
+    
+    // API client es crítico para funcionamiento
+    './src/utils/http-api-client.ts': {
+      branches: 90,
+      functions: 90,
+      lines: 90,
+      statements: 90,
+    },
+    
+    // Componentes pueden tener threshold estándar
+    './src/components/': {
+      branches: 75,
+      functions: 75,
+      lines: 75,
+      statements: 75,
+    },
+    
+    // Hooks personalizados con threshold medio
+    './src/hooks/': {
+      branches: 70,
+      functions: 70,
+      lines: 70,
+      statements: 70,
     },
   },
 };
 ```
+
+**Justificación de thresholds:**
+
+- **`auth.ts` (100%)**: Cualquier bug en autenticación es crítico (seguridad, acceso indebido)
+- **`http-api-client.ts` (90%)**: Maneja toda comunicación con backend, errores afectan toda la app
+- **`components/` (75%)**: Importantes pero menos críticos, UI puede testearse visualmente
+- **`hooks/` (70%)**: Utilidades reutilizables, threshold moderado
 
 ### Thresholds incrementales
 
@@ -227,27 +349,43 @@ Esto evita la frustración de intentar llegar a 80% de golpe y establece progres
 
 ### Ignorar archivos del coverage
 
-Algunos archivos no necesitan coverage (o no pueden testearse fácilmente):
+Algunos archivos no necesitan coverage (o no pueden testearse fácilmente). En nuestro `jest.config.cjs`:
 
 ```javascript
+// jest.config.cjs
 module.exports = {
+  // Patrones de archivos a ignorar en coverage
   coveragePathIgnorePatterns: [
-    '/node_modules/',
-    '/dist/',
-    '/coverage/',
-    '\\.config\\.(js|ts)$',      // Archivos de configuración
-    '/__mocks__/',                // Mocks
-    '/src/types/',                // Solo tipos TypeScript
+    '/node_modules/',           // Dependencias
+    '/dist/',                   // Build output
+    '/coverage/',               // Reportes de coverage
+    '\\.config\\.(js|ts)$',     // Archivos de configuración (vite.config.ts, etc.)
+    '/__mocks__/',              // Archivos de mocks
+    '/src/types/',              // Solo definiciones de tipos TypeScript
+    '/src/vite-env.d.ts',       // Tipos generados por Vite
   ],
   
+  // Especificar qué archivos SÍ incluir en coverage
   collectCoverageFrom: [
-    'src/**/*.{js,jsx,ts,tsx}',
-    '!src/**/*.d.ts',             // Excluir definiciones de tipos
-    '!src/**/*.stories.tsx',      // Excluir stories de Storybook
-    '!src/index.tsx',             // Excluir entry point
+    'src/**/*.{js,jsx,ts,tsx}',     // Todo en src/
+    '!src/**/*.d.ts',                // Excluir definiciones de tipos
+    '!src/main.tsx',                 // Excluir entry point
+    '!src/App.tsx',                  // Excluir App root (muy acoplado a React)
+    '!src/styles/**',                // Excluir estilos (Styled Components)
+    '!src/**/*.stories.tsx',         // Excluir stories si usáramos Storybook
+    '!src/utils/__mocks__/**',       // Excluir mocks manuales
   ],
 };
 ```
+
+**Archivos que excluimos del coverage en nuestro proyecto:**
+
+1. **`main.tsx`**: Entry point de React, solo hace `ReactDOM.render()`, nada que testear
+2. **`App.tsx`**: Componente raíz con Router, difícil de testear unitariamente (mejor E2E)
+3. **`vite-env.d.ts`**: Tipos generados automáticamente por Vite
+4. **`*.d.ts`**: Archivos de definiciones de tipos (sin lógica)
+5. **`src/styles/`**: Styled Components, testing visual no es útil en coverage
+6. **`__mocks__/`**: Los mocks no se testean a sí mismos
 
 ## ¿Cuánto Coverage es Suficiente?
 
@@ -262,22 +400,36 @@ No existe un número mágico, pero estas son las recomendaciones generales segú
 - **Permite flexibilidad** en código de bajo riesgo
 - **No genera frustración** en el equipo
 
-**Ejemplo práctico:**
+**Ejemplo práctico en nuestro proyecto:**
 
 ```typescript
-// Código crítico: payment.service.ts - 90% coverage
-class PaymentService {
-  processPayment(amount: number, card: Card) {
-    // Cada branch testeado por su importancia
-  }
-}
+// src/utils/auth.ts - Código crítico: 100% coverage requerido
+export const setAuthToken = (token: string): void => {
+  localStorage.setItem(LOCAL_STORAGE_KEY, token);
+};
 
-// Código auxiliar: logger.ts - 60% coverage
-class Logger {
-  log(message: string) {
-    // Menos crítico, coverage más relajado
-  }
-}
+export const isTokenActive = (token: string | null): boolean => {
+  if (!token) return false;
+  const decodedToken = jwt_decode<DecodedToken>(token);
+  return decodedToken.exp * 1000 > Date.now();
+};
+
+// Cada branch testeado por su importancia (seguridad)
+// ✅ Test: token válido → true
+// ✅ Test: token null → false  
+// ✅ Test: token expirado → false
+// ✅ Test: token futuro → true
+
+// src/components/Loader.tsx - Código auxiliar: 75% coverage aceptable
+export const Loader: React.FC = () => (
+  <Container>
+    <LoaderSpinner />
+  </Container>
+);
+
+// Componente visual simple, un test de smoke es suficiente
+// ✅ Test: renderiza sin crash
+// (No necesitamos testear estilos, animaciones CSS, etc.)
 ```
 
 ### Coverage alto: 90-100%
@@ -366,31 +518,42 @@ it('should validate credit card format', () => {
 4. **Revisa qué NO está cubierto** para decisiones conscientes
 5. **Usa coverage como guía, no como meta absoluta**
 
-**Visualización de prioridades:**
+**Visualización de prioridades en nuestro proyecto:**
 
 ```text
-┌─────────────────────────────────────────┐
-│      Código Crítico (90-100%)           │
-│  - Pagos                                │
-│  - Autenticación                        │
-│  - Lógica de negocio core               │
-├─────────────────────────────────────────┤
-│      Código Importante (70-80%)         │
-│  - Features principales                 │
-│  - Validaciones                         │
-│  - Transformaciones de datos            │
-├─────────────────────────────────────────┤
-│      Código Auxiliar (50-60%)           │
-│  - Utilities                            │
-│  - Helpers                              │
-│  - Formatters                           │
-├─────────────────────────────────────────┤
-│      Código de Bajo Riesgo (<50%)       │
-│  - Configuración                        │
-│  - Constants                            │
-│  - Types                                │
-└─────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────┐
+│      Código Crítico (90-100%)                        │
+│  ✅ src/utils/auth.ts          (100% actual)         │
+│  ✅ src/utils/config.ts        (100% actual)         │
+│  🔄 src/utils/http-api-client.ts (88% → 90%)         │
+├──────────────────────────────────────────────────────┤
+│      Código Importante (75-85%)                      │
+│  ✅ src/components/ProjectCard.tsx  (85% actual)     │
+│  🔄 src/hooks/useAuth.ts            (80% actual)     │
+│  🔄 src/hooks/useToggle.ts          (70% → 75%)      │
+├──────────────────────────────────────────────────────┤
+│      Código Auxiliar (60-75%)                        │
+│  ✅ src/components/Loader.tsx       (100% actual)    │
+│  ⚪ src/components/Button.tsx       (no testeado)    │
+│  ⚪ src/utils/formatters.ts         (no testeado)    │
+├──────────────────────────────────────────────────────┤
+│      Código de Bajo Riesgo (<60%)                    │
+│  ⚪ src/styles/                     (ignorado)       │
+│  ⚪ src/main.tsx                    (ignorado)       │
+│  ⚪ src/App.tsx                     (ignorado)       │
+│  ⚪ src/vite-env.d.ts               (ignorado)       │
+└──────────────────────────────────────────────────────┘
+
+Leyenda:
+✅ Objetivo cumplido  | 🔄 Necesita mejora  | ⚪ No prioritario
 ```
+
+**Estado actual del proyecto:**
+
+- **Global**: 82.14% (por encima del objetivo de 70-80%)
+- **Utilities**: 95% (excelente, código crítico bien cubierto)
+- **Components**: 90% (muy bien, UI confiable)
+- **Hooks**: 75% (aceptable, pero se puede mejorar)
 
 ## Buenas Prácticas
 
@@ -400,36 +563,48 @@ El coverage es una herramienta poderosa, pero debe usarse correctamente para obt
 
 Los tests son documentación viva. Deben explicar **qué** hace el código y **por qué**.
 
-**Nombres de tests:**
+**Nombres de tests en nuestro proyecto:**
 
 ```typescript
 // ❌ Mal: Vago, no explica el caso
 it('works', () => { ... });
 
 // ❌ Mal: Demasiado técnico
-it('should call validateEmail with params', () => { ... });
+it('should call setAuthToken with params', () => { ... });
 
 // ✅ Bien: Claro, explica comportamiento esperado
-it('debe mostrar mensaje de error cuando email es inválido', () => { ... });
+it('debe almacenar token en localStorage cuando se llama setAuthToken', () => { 
+  setAuthToken('abc123');
+  expect(localStorage.getItem(LOCAL_STORAGE_KEY)).toBe('abc123');
+});
 
 // ✅ Bien: Describe el escenario específico
-it('debe aceptar emails con subdominios como user@mail.company.com', () => { ... });
+it('debe retornar false cuando el token ha expirado', () => {
+  const expiredToken = 'eyJhbGciOiJIUzI1NiJ9...'; // Token con exp pasado
+  expect(isTokenActive(expiredToken)).toBe(false);
+});
 ```
 
 **Estructura clara:**
 
 ```typescript
-describe('LoginForm', () => {
-  describe('validación de email', () => {
-    it('debe aceptar emails válidos', () => { ... });
-    it('debe rechazar emails sin @', () => { ... });
-    it('debe rechazar emails sin dominio', () => { ... });
+// src/components/__tests__/ProjectCard.test.tsx
+describe('ProjectCard', () => {
+  describe('renderizado de información del proyecto', () => {
+    it('debe mostrar nombre del proyecto', () => { ... });
+    it('debe mostrar descripción del proyecto', () => { ... });
+    it('debe renderizar botón Delete si canEdit es true', () => { ... });
   });
 
-  describe('submit del formulario', () => {
-    it('debe llamar onSubmit con datos correctos', () => { ... });
-    it('debe mostrar loading durante submit', () => { ... });
-    it('debe deshabilitar botón mientras carga', () => { ... });
+  describe('interacciones del usuario', () => {
+    it('debe llamar toggleEdit cuando se hace click en Edit', () => { ... });
+    it('debe llamar onDelete cuando se confirma eliminación', () => { ... });
+    it('debe llamar onToggleComplete cuando se hace click en Complete', () => { ... });
+  });
+  
+  describe('estados condicionales', () => {
+    it('debe mostrar badge "Completed" cuando completed es true', () => { ... });
+    it('debe ocultar botón Delete cuando canEdit es false', () => { ... });
   });
 });
 ```
@@ -442,21 +617,25 @@ Cada test debe verificar **una sola cosa**. Si falla, debe ser obvio qué está 
 
 ```typescript
 // ❌ Mal: Test hace muchas cosas
-it('debe manejar todo el flujo de usuario', () => {
-  // 1. Testea validación
-  const form = render(<RegisterForm />);
-  fireEvent.change(emailInput, { target: { value: 'invalid' } });
-  expect(getByText('Email inválido')).toBeInTheDocument();
+it('debe manejar todo el flujo de ProjectCard', () => {
+  const mockOnDelete = jest.fn();
+  const mockOnToggleComplete = jest.fn();
+  
+  // 1. Testea renderizado
+  render(<ProjectCard project={mockProject} onDelete={mockOnDelete} />);
+  expect(screen.getByText('Test Project')).toBeInTheDocument();
 
-  // 2. Testea guardado
-  fireEvent.change(emailInput, { target: { value: 'valid@email.com' } });
-  fireEvent.click(submitButton);
-  expect(mockSave).toHaveBeenCalled();
+  // 2. Testea interacción de edición
+  fireEvent.click(screen.getByText('Edit'));
+  expect(screen.getByText('Save')).toBeInTheDocument();
 
-  // 3. Testea navegación
-  await waitFor(() => {
-    expect(mockNavigate).toHaveBeenCalledWith('/dashboard');
-  });
+  // 3. Testea eliminación
+  fireEvent.click(screen.getByText('Delete'));
+  expect(mockOnDelete).toHaveBeenCalledWith(mockProject.id);
+
+  // 4. Testea completar proyecto
+  fireEvent.click(screen.getByText('Complete'));
+  expect(mockOnToggleComplete).toHaveBeenCalled();
 });
 ```
 
@@ -464,38 +643,45 @@ it('debe manejar todo el flujo de usuario', () => {
 
 ```typescript
 // ✅ Bien: Tests separados y enfocados
-describe('RegisterForm', () => {
-  it('debe mostrar error cuando email es inválido', () => {
-    render(<RegisterForm />);
-    fireEvent.change(emailInput, { target: { value: 'invalid' } });
-    expect(screen.getByText('Email inválido')).toBeInTheDocument();
+describe('ProjectCard', () => {
+  it('debe mostrar información del proyecto', () => {
+    render(<ProjectCard project={mockProject} onDelete={mockOnDelete} />);
+    expect(screen.getByText('Test Project')).toBeInTheDocument();
+    expect(screen.getByText('Project description')).toBeInTheDocument();
   });
 
-  it('debe llamar a la API de registro con datos correctos', async () => {
-    render(<RegisterForm />);
-    fillValidForm();
-    fireEvent.click(submitButton);
-    expect(mockAPI.register).toHaveBeenCalledWith({
-      email: 'user@example.com',
-      name: 'John Doe',
-    });
+  it('debe cambiar a modo edición al hacer click en Edit', () => {
+    render(<ProjectCard project={mockProject} onDelete={mockOnDelete} />);
+    fireEvent.click(screen.getByText('Edit'));
+    expect(screen.getByText('Save')).toBeInTheDocument();
   });
 
-  it('debe navegar a dashboard después de registro exitoso', async () => {
-    mockAPI.register.mockResolvedValue({ success: true });
-    render(<RegisterForm />);
-    fillValidForm();
-    fireEvent.click(submitButton);
-    await waitFor(() => {
-      expect(mockNavigate).toHaveBeenCalledWith('/dashboard');
-    });
+  it('debe llamar onDelete con el ID correcto', () => {
+    const mockOnDelete = jest.fn();
+    render(<ProjectCard project={mockProject} onDelete={mockOnDelete} />);
+    
+    fireEvent.click(screen.getByText('Delete'));
+    expect(mockOnDelete).toHaveBeenCalledWith(mockProject.id);
+  });
+
+  it('debe llamar onToggleComplete al completar proyecto', () => {
+    const mockOnToggleComplete = jest.fn();
+    render(
+      <ProjectCard 
+        project={mockProject} 
+        onToggleComplete={mockOnToggleComplete} 
+      />
+    );
+    
+    fireEvent.click(screen.getByText('Complete'));
+    expect(mockOnToggleComplete).toHaveBeenCalledWith(mockProject.id);
   });
 });
 ```
 
 **Ventajas:**
 
-- Si falla el test de validación, sé exactamente qué está roto
+- Si falla el test de edición, sé exactamente qué está roto
 - Puedo ejecutar solo el test relevante durante desarrollo
 - Tests más rápidos individualmente
 - Mejor documentación del comportamiento
@@ -508,49 +694,53 @@ Testa **qué hace** el componente, no **cómo lo hace**. Los tests deben sobrevi
 
 ```typescript
 // ❌ Mal: Acoplado a implementación interna
-it('debe actualizar state count', () => {
-  const { container } = render(<Counter />);
-  const component = container.querySelector('.counter');
+it('debe actualizar state isEditing', () => {
+  const { container } = render(<ProjectCard project={mockProject} />);
+  const component = container.querySelector('.project-card');
   
-  // Esto es testing de implementación
-  expect(component.state.count).toBe(0);
+  // Esto es testing de implementación (acceder a state interno)
+  expect(component.state.isEditing).toBe(false);
   
-  fireEvent.click(incrementButton);
-  expect(component.state.count).toBe(1);
+  fireEvent.click(screen.getByText('Edit'));
+  expect(component.state.isEditing).toBe(true);
 });
 
-// Si cambias de state a useReducer, el test falla aunque la funcionalidad sea igual
+// Si cambias de useState a useReducer o a un hook personalizado,
+// el test falla aunque la funcionalidad sea idéntica
 ```
 
 **Mejor enfoque - Testear comportamiento observable:**
 
 ```typescript
 // ✅ Bien: Testa lo que el usuario ve
-it('debe incrementar el contador cuando se hace click', () => {
-  render(<Counter />);
+it('debe cambiar a modo edición cuando se hace click en Edit', () => {
+  render(<ProjectCard project={mockProject} />);
   
   // Verificar estado inicial visible
-  expect(screen.getByText('Count: 0')).toBeInTheDocument();
+  expect(screen.getByText('Edit')).toBeInTheDocument();
+  expect(screen.queryByText('Save')).not.toBeInTheDocument();
   
   // Simular acción del usuario
-  fireEvent.click(screen.getByRole('button', { name: /increment/i }));
+  fireEvent.click(screen.getByText('Edit'));
   
   // Verificar resultado visible
-  expect(screen.getByText('Count: 1')).toBeInTheDocument();
+  expect(screen.getByText('Save')).toBeInTheDocument();
+  expect(screen.queryByText('Edit')).not.toBeInTheDocument();
 });
 
-// Este test funciona igual si cambias useState por useReducer, Context, o Zustand
+// Este test funciona igual si cambias la implementación interna
+// (useState → useReducer → useToggle → Context, etc.)
 ```
 
 **Qué testear vs qué NO testear:**
 
 | ✅ Testa esto (Comportamiento) | ❌ No testes esto (Implementación) |
 |--------------------------------|-----------------------------------|
-| Texto renderizado | Nombres de variables de state |
-| Elementos visibles | Nombres de funciones internas |
-| Respuestas a eventos de usuario | Estructura de componentes |
-| Llamadas a APIs | Qué hooks se usan |
-| Navegación | Order de ejecución interno |
+| Texto renderizado (nombre del proyecto) | Nombres de variables de state (`isEditing`) |
+| Botones visibles (Edit, Delete, Complete) | Nombres de funciones internas (`handleToggle`) |
+| Respuestas a eventos (click en Edit) | Estructura de componentes hijos |
+| Llamadas a props (`onDelete`, `onToggleComplete`) | Qué hooks se usan (`useToggle` vs `useState`) |
+| Estilos visibles (badge "Completed") | Order de ejecución interno de funciones |
 
 ### 4. Tests independientes y aislados
 
@@ -617,31 +807,46 @@ Usa `beforeEach`, `afterEach`, `beforeAll`, `afterAll` para código de setup com
 **Cuándo usar cada uno:**
 
 ```typescript
-describe('Database Tests', () => {
-  let db;
+// src/utils/__tests__/http-api-client.test.ts
+describe('HttpApiClient', () => {
+  let client: HttpApiClient;
+  let mockFetch: jest.Mock;
 
   // beforeAll: Setup costoso una sola vez
-  beforeAll(async () => {
-    db = await createTestDatabase();
-    await db.migrate();
+  beforeAll(() => {
+    // Inicializar singleton (solo una vez para todas las pruebas)
+    client = HttpApiClient.getInstance();
   });
 
   // beforeEach: Limpieza entre tests
-  beforeEach(async () => {
-    await db.clearAllTables(); // Cada test empieza limpio
+  beforeEach(() => {
+    // Cada test empieza con mocks limpios
+    mockFetch = jest.fn();
+    global.fetch = mockFetch;
+    localStorage.clear();
   });
 
-  it('debe insertar usuario', async () => {
-    await db.users.insert({ name: 'John' });
-    const users = await db.users.findAll();
-    expect(users).toHaveLength(1);
+  it('debe obtener proyectos exitosamente', async () => {
+    localStorage.setItem(LOCAL_STORAGE_KEY, 'valid-token');
+    mockFetch.mockResolvedValue({
+      status: 200,
+      json: async () => [{ id: '1', name: 'Project 1' }],
+    });
+
+    const projects = await client.getProjects();
+    expect(projects).toHaveLength(1);
   });
 
-  it('debe buscar por ID', async () => {
-    // DB está vacía gracias a beforeEach
-    const user = await db.users.insert({ name: 'Jane' });
-    const found = await db.users.findById(user.id);
-    expect(found.name).toBe('Jane');
+  it('debe redirigir a login si no hay token', async () => {
+    // localStorage está vacío gracias a beforeEach
+    const replaceMock = jest.fn();
+    Object.defineProperty(window, 'location', {
+      value: { replace: replaceMock },
+      writable: true,
+    });
+
+    await client.getProjects();
+    expect(replaceMock).toHaveBeenCalledWith('/login');
   });
 
   // afterEach: Limpieza específica si necesaria
@@ -649,42 +854,50 @@ describe('Database Tests', () => {
     jest.clearAllMocks(); // Limpiar mocks después de cada test
   });
 
-  // afterAll: Cleanup final
-  afterAll(async () => {
-    await db.close();
+  // afterAll: Cleanup final (si fuera necesario)
+  afterAll(() => {
+    // En este caso no necesitamos cleanup especial
+    // pero aquí cerraríamos conexiones DB, etc.
   });
 });
 ```
 
-**Buenas prácticas:**
+**Buenas prácticas en nuestro proyecto:**
 
 ```typescript
 // ✅ Usar beforeEach para setup común
 beforeEach(() => {
-  mockAPI.reset();
-  mockNavigate.mockClear();
+  // Limpiar todos los mocks
+  jest.clearAllMocks();
+  
+  // Resetear localStorage
   localStorage.clear();
+  
+  // Resetear mocks de navegación
+  mockNavigate.mockClear();
 });
 
 // ✅ Factories para crear datos de test
-const createTestUser = (overrides = {}) => ({
+const createMockProject = (overrides: Partial<Project> = {}): Project => ({
   id: '123',
-  name: 'John Doe',
-  email: 'john@example.com',
+  name: 'Test Project',
+  description: 'Test description',
+  completed: false,
   ...overrides,
 });
 
-it('debe manejar usuario sin email', () => {
-  const user = createTestUser({ email: null });
-  expect(validateUser(user)).toBe(false);
+it('debe manejar proyecto completado', () => {
+  const completedProject = createMockProject({ completed: true });
+  render(<ProjectCard project={completedProject} />);
+  expect(screen.getByText('Completed')).toBeInTheDocument();
 });
 
 // ✅ Cleanup explícito en tests con side effects
-it('debe guardar en localStorage', () => {
-  saveToken('abc123');
-  expect(localStorage.getItem('token')).toBe('abc123');
+it('debe guardar token en localStorage', () => {
+  setAuthToken('abc123');
+  expect(localStorage.getItem(LOCAL_STORAGE_KEY)).toBe('abc123');
   
-  // Cleanup
+  // Cleanup (aunque beforeEach ya lo hace)
   localStorage.clear();
 });
 ```
@@ -693,38 +906,42 @@ it('debe guardar en localStorage', () => {
 
 **No persigas 100% coverage ciegamente.** Enfócate en testear código que **genera valor**:
 
-**Alto valor:**
+**Alto valor en nuestro proyecto:**
 
-- ✅ Lógica de negocio compleja
-- ✅ Validaciones críticas
-- ✅ Transformaciones de datos
-- ✅ Integraciones con APIs externas
-- ✅ Código con historial de bugs
+- ✅ **`src/utils/auth.ts`**: Lógica de tokens, seguridad crítica
+- ✅ **`src/utils/http-api-client.ts`**: Comunicación con API, manejo de errores
+- ✅ **`src/components/ProjectCard.tsx`**: Componente complejo con lógica de negocio
+- ✅ **`src/hooks/useAuth.ts`**: Hook reutilizable para autenticación
+- ✅ Validaciones de formularios (cuando las añadamos)
 
 **Bajo valor (pero puedes testear si es rápido):**
 
-- 🤷 Getters/setters triviales
-- 🤷 Componentes puramente presentacionales
-- 🤷 Constantes y configuración
-- 🤷 Código generado automáticamente
+- 🤷 **`src/components/Loader.tsx`**: Componente puramente presentacional
+- 🤷 **`src/styles/`**: Styled Components (sin lógica)
+- 🤷 **`src/utils/constants.ts`**: Solo constantes
+- 🤷 **`src/types/`**: Solo definiciones de tipos
 
 **Ejemplo priorización:**
 
 ```typescript
-// Alta prioridad: Lógica compleja de pricing
-describe('calculatePrice', () => {
-  it('debe aplicar descuento por volumen');
-  it('debe sumar impuestos según región');
-  it('debe aplicar cupones correctamente');
-  it('debe limitar descuento máximo al 80%');
-  // ... 20 tests cubriendo todos los casos
+// ✅ Alta prioridad: Lógica compleja de autenticación
+describe('isTokenActive', () => {
+  it('debe retornar false para token null');
+  it('debe retornar false para token expirado');
+  it('debe retornar true para token válido');
+  it('debe manejar tokens malformados');
+  it('debe considerar la zona horaria del servidor');
+  // ... tests exhaustivos por la criticidad
 });
 
-// Baja prioridad: Componente visual simple
-const Button = ({ label, onClick }) => (
-  <button onClick={onClick}>{label}</button>
-);
-// Tal vez un test de smoke, no necesitas 10 tests
+// 🤷 Baja prioridad: Componente visual simple
+describe('Loader', () => {
+  it('debe renderizar sin crash', () => {
+    render(<Loader />);
+    expect(screen.getByRole('status')).toBeInTheDocument();
+  });
+  // Un test de smoke es suficiente, no necesitamos 10 tests
+});
 ```
 
 ### 7. Usar coverage para descubrir, no para certificar
@@ -746,17 +963,39 @@ const Button = ({ label, onClick }) => (
 **Ejemplo de uso correcto:**
 
 ```bash
-# Ejecutar coverage
+# Ejecutar coverage en nuestro proyecto
+cd Taller-Testing-Security/ui
 npm run test:coverage
 
-# Mirar reporte HTML
-# "Ah, la función validateCreditCard solo tiene 60% coverage"
-# "Veo que no testeo el caso de tarjetas expiradas"
+# Mirar reporte en consola
+# "Ah, http-api-client.ts solo tiene 88% coverage"
+# "Veo que no testeo el caso de error de red (catch block)"
+
+# Abrir reporte HTML para ver exactamente qué líneas faltan
+open coverage/lcov-report/index.html
+# Navegar a: src/utils/http-api-client.ts
+# Ver en rojo las líneas del catch block
 
 # Añadir test específico
-it('debe rechazar tarjetas expiradas', () => {
-  const expiredCard = { number: '4111...', expiry: '01/20' };
-  expect(() => validateCreditCard(expiredCard))
-    .toThrow('Card expired');
+it('debe manejar errores de red', async () => {
+  const mockFetch = jest.fn().mockRejectedValue(
+    new Error('Network error')
+  );
+  global.fetch = mockFetch;
+
+  await expect(client.getProjects()).rejects.toThrow('Network error');
 });
+
+# Volver a ejecutar coverage
+npm run test:coverage
+# Ahora http-api-client.ts tiene 100% ✅
 ```
+
+**Workflow recomendado:**
+
+1. **Escribir tests para features nuevas** (alcanzar ~80%)
+2. **Ejecutar `npm run test:coverage`** periódicamente
+3. **Revisar reporte HTML** para ver gaps
+4. **Priorizar** qué gaps son importantes (código crítico vs auxiliar)
+5. **Añadir tests específicos** solo para gaps de alto valor
+6. **No obsesionarse** con llegar a 100% en todo

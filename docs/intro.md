@@ -30,27 +30,6 @@ Este módulo se divide en **4 sesiones** de 1.5 horas cada una:
 - Mocks y Spies
 - Cobertura de código
 
-### [Sesión 2: Testing de Integración](./sesion-02/intro)
-- Testing de Context API
-- Testing de custom hooks
-- Testing de APIs con Supertest
-- Mock Service Worker (MSW)
-- Testing de flujos de autenticación
-
-### [Sesión 3: Testing E2E con Cypress](./sesion-03/intro)
-- Configuración de Cypress
-- Selectores y comandos
-- Testing de formularios y navegación
-- Interceptación de peticiones HTTP
-- Custom commands y mejores prácticas
-
-### [Sesión 4: Seguridad y Desarrollo Seguro](./sesion-04/intro)
-- OWASP Top 10
-- Prevención de vulnerabilidades (XSS, CSRF, Injection)
-- Helmet.js y headers de seguridad
-- Rate limiting y validación
-- Gestión de secretos
-- Auditoría de dependencias
 
 ## 🏗️ Enfoque del Módulo
 

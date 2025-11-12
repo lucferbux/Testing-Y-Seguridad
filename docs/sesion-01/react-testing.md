@@ -3,7 +3,20 @@ sidebar_position: 6
 title: "Testing de Componentes React"
 ---
 
-El testing de componentes React es fundamental para asegurar que nuestra interfaz de usuario funciona correctamente. En esta sección aprenderemos a testear componentes usando React Testing Library, siguiendo las mejores prácticas de la industria.
+El testing de componentes React es fundamental para asegurar que nuestra interfaz de usuario funciona correctamente. En esta sección aprenderemos a testear componentes del proyecto **Taller-Testing-Security** usando React Testing Library, desde componentes simples hasta componentes complejos con hooks y styled-components.
+
+## Contexto del Proyecto
+
+Los componentes que testearemos pertenecen al frontend del proyecto **Taller-Testing-Security/ui**, que incluye:
+
+- **Loader.tsx**: Componente simple de presentación que muestra un spinner y mensaje
+- **ProjectCard.tsx**: Componente complejo con:
+  - Hooks personalizados (`useAuth`, `useToggle`)
+  - Styled Components para estilos
+  - Lógica condicional basada en autenticación
+  - Interacciones de usuario (menu dropdown, botones)
+
+Estos son componentes **reales de producción**, lo que hace que los tests sean más relevantes y aplicables a proyectos reales.
 
 ## React Testing Library: Filosofía
 
@@ -65,514 +78,802 @@ RTL promueve usar selectores que **mejoran la accesibilidad**. Si tu test no pue
 
 Esta filosofía no solo mejora tus tests, sino también la **accesibilidad de tu aplicación**.
 
-## Ejemplo 1: Componente Simple
+## Ejemplo 1: Componente de Presentación Simple - Loader
 
-Comencemos con un componente Button simple pero completo que demuestra los conceptos fundamentales de testing en React.
+Comencemos con `Loader.tsx`, un componente simple de presentación que muestra un spinner de carga y un mensaje. Es perfecto para aprender los fundamentos de testing de componentes React.
 
-### Código: src/components/Button.tsx
+### Código: src/components/elements/Loader.tsx
 
 ```tsx
 import React from 'react';
+import styled from 'styled-components';
+import icnLoader from './loader.svg';
+import { themes } from '../../styles/ColorStyles';
+import { Caption } from '../../styles/TextStyles';
 
-interface ButtonProps {
-  label: string;
-  onClick: () => void;
-  disabled?: boolean;
-  variant?: 'primary' | 'secondary';
-}
+export type LoaderProps = {
+  message: string;
+};
 
-export function Button({ 
-  label, 
-  onClick, 
-  disabled = false,
-  variant = 'primary' 
-}: ButtonProps) {
-  return (
-    <button
-      onClick={onClick}
-      disabled={disabled}
-      className={`btn btn-${variant}`}
-    >
-      {label}
-    </button>
-  );
-}
+const Loader = ({ message }: LoaderProps) => (
+  <LoaderWrapper>
+    <LoaderCard>
+      <LoaderImg src={icnLoader} alt={message} />
+      <LoaderMsg>{message}</LoaderMsg>
+    </LoaderCard>
+  </LoaderWrapper>
+);
+
+export default Loader;
+
+const LoaderWrapper = styled.div`
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  background-color: ${themes.light.loadingScreen};
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+`;
+
+const LoaderCard = styled.div`
+  font-size: 24px;
+  text-align: center;
+  color: ${themes.dark.text1};
+`;
+
+const LoaderImg = styled.img`
+  margin: 0 auto;
+  margin-bottom: 20px;
+`;
+
+const LoaderMsg = styled(Caption)``;
 ```
 
-Este componente es un botón reutilizable con:
+### Características del componente
 
-- **label**: Texto que muestra el botón
-- **onClick**: Callback cuando se hace click
-- **disabled**: Opcional, deshabilita el botón
-- **variant**: Opcional, cambia el estilo visual
+- **Props**: Solo recibe `message` (string)
+- **Renderizado**: Muestra imagen SVG y texto del mensaje
+- **Estilos**: Usa Styled Components con theming
+- **Complejidad**: Muy baja, sin estado ni lógica
+- **Uso real**: Se muestra mientras cargan datos del backend
 
-### Test: src/components/\__tests__/Button.test.tsx
+Este componente es perfecto para aprender:
+- Renderizado básico de componentes
+- Testing de props
+- Verificación de elementos en el DOM
+- Testing con Styled Components
+- Manejo de assets (SVG importado)
+
+### Test: src/components/elements/\__tests__/Loader.test.tsx
 
 ```tsx
 import React from 'react';
-import { render, screen, fireEvent } from '@testing-library/react';
-import { Button } from '../Button';
+import { render, screen } from '@testing-library/react';
+import Loader from '../Loader';
 
-describe('Button', () => {
+describe('Loader', () => {
   
-  it('debe renderizar con el label correcto', () => {
-    render(<Button label="Click me" onClick={() => {}} />);
-    expect(screen.getByText('Click me')).toBeInTheDocument();
-  });
-
-  it('debe llamar onClick cuando se hace click', () => {
-    const handleClick = jest.fn();
-    render(<Button label="Click" onClick={handleClick} />);
+  it('debe renderizar el mensaje correctamente', () => {
+    const testMessage = 'Cargando datos...';
+    render(<Loader message={testMessage} />);
     
-    const button = screen.getByRole('button');
-    fireEvent.click(button);
+    expect(screen.getByText(testMessage)).toBeInTheDocument();
+  });
+
+  it('debe renderizar la imagen del loader', () => {
+    const testMessage = 'Loading';
+    render(<Loader message={testMessage} />);
     
-    expect(handleClick).toHaveBeenCalledTimes(1);
+    // Buscar por alt text (accesibilidad)
+    const loaderImage = screen.getByAltText(testMessage);
+    expect(loaderImage).toBeInTheDocument();
+    expect(loaderImage).toHaveAttribute('src');
   });
 
-  it('no debe llamar onClick cuando está disabled', () => {
-    const handleClick = jest.fn();
-    render(<Button label="Click" onClick={handleClick} disabled />);
+  it('debe renderizar con diferentes mensajes', () => {
+    const { rerender } = render(<Loader message="Primer mensaje" />);
+    expect(screen.getByText('Primer mensaje')).toBeInTheDocument();
     
-    const button = screen.getByRole('button');
-    fireEvent.click(button);
+    // Re-renderizar con nuevo mensaje
+    rerender(<Loader message="Segundo mensaje" />);
+    expect(screen.getByText('Segundo mensaje')).toBeInTheDocument();
+    expect(screen.queryByText('Primer mensaje')).not.toBeInTheDocument();
+  });
+
+  it('debe tener la estructura DOM correcta', () => {
+    const testMessage = 'Test';
+    const { container } = render(<Loader message={testMessage} />);
     
-    expect(handleClick).not.toHaveBeenCalled();
-  });
-
-  it('debe tener la clase primary por defecto', () => {
-    render(<Button label="Click" onClick={() => {}} />);
-    const button = screen.getByRole('button');
-    expect(button).toHaveClass('btn-primary');
-  });
-
-  it('debe aplicar variant secondary', () => {
-    render(<Button label="Click" onClick={() => {}} variant="secondary" />);
-    const button = screen.getByRole('button');
-    expect(button).toHaveClass('btn-secondary');
-  });
-
-  it('debe estar disabled cuando se pasa la prop', () => {
-    render(<Button label="Click" onClick={() => {}} disabled />);
-    const button = screen.getByRole('button');
-    expect(button).toBeDisabled();
+    // Verificar que hay un contenedor principal (LoaderWrapper)
+    expect(container.firstChild).toBeInTheDocument();
+    
+    // Verificar que contiene tanto imagen como mensaje
+    const image = screen.getByAltText(testMessage);
+    const text = screen.getByText(testMessage);
+    expect(image).toBeInTheDocument();
+    expect(text).toBeInTheDocument();
   });
 });
 ```
 
-### Desglosando el test
+### Desglosando el test del Loader
 
-**`render()` - Renderizar el componente**
-
-```tsx
-render(<Button label="Click me" onClick={() => {}} />);
-```
-
-`render()` es la función principal de RTL. Renderiza el componente en un DOM virtual donde podemos interactuar con él. No necesitas un navegador real.
-
-**`screen` - Acceder al DOM renderizado**
+#### `render()` - Renderizar el componente
 
 ```tsx
-screen.getByText('Click me')
-screen.getByRole('button')
+render(<Loader message={testMessage} />);
 ```
 
-`screen` es un objeto que proporciona queries para encontrar elementos en el DOM renderizado. Es el punto de entrada principal para todas las queries.
+`render()` es la función principal de RTL. Renderiza el componente en un DOM virtual (jsdom) donde podemos interactuar con él. No necesitas un navegador real.
 
-**`fireEvent` - Simular eventos del usuario**
+**Características importantes**:
+- Monta el componente como lo haría React
+- Maneja Styled Components automáticamente
+- Mockea assets (SVG) gracias a `jest.config.cjs`
+
+#### `screen` - Acceder al DOM renderizado
 
 ```tsx
-fireEvent.click(button);
+screen.getByText('Cargando datos...')
+screen.getByAltText(testMessage)
 ```
 
-`fireEvent` dispara eventos del DOM. Aunque funciona, para interacciones más realistas es mejor usar `@testing-library/user-event`:
+`screen` es un objeto que proporciona queries para encontrar elementos. Es el punto de entrada principal para todas las queries.
+
+**Tipos de queries**:
+- `getBy`: Lanza error si no encuentra (para aserciones)
+- `queryBy`: Retorna null si no encuentra (para verificar ausencia)
+- `findBy`: Async, espera a que aparezca
+
+#### Testing de props
 
 ```tsx
-import userEvent from '@testing-library/user-event';
-
-await userEvent.click(button);  // Más realista
+it('debe renderizar el mensaje correctamente', () => {
+  const testMessage = 'Cargando datos...';
+  render(<Loader message={testMessage} />);
+  expect(screen.getByText(testMessage)).toBeInTheDocument();
+});
 ```
 
-**`jest.fn()` - Mock functions**
+Verificamos que el componente **usa la prop correctamente**. No testeamos cómo se implementa internamente, solo que el mensaje aparece en la UI.
+
+#### Testing de re-renderizado
 
 ```tsx
-const handleClick = jest.fn();
+const { rerender } = render(<Loader message="Primer mensaje" />);
+rerender(<Loader message="Segundo mensaje" />);
 ```
 
-Creamos una función mockeada para pasar como onClick. Esto nos permite verificar si fue llamada y cuántas veces.
+`rerender()` actualiza el componente con nuevas props. Útil para verificar que el componente **reacciona a cambios de props**.
+
+#### Accesibilidad con alt text
+
+```tsx
+const loaderImage = screen.getByAltText(testMessage);
+```
+
+Usar `getByAltText` verifica dos cosas:
+1. La imagen existe
+2. Tiene un `alt` text apropiado (accesibilidad)
+
+Si cambias el alt text, el test sigue pasando (no es un detalle de implementación).
 
 ### Matchers de jest-dom
 
 ```tsx
-expect(element).toBeInTheDocument();
-expect(element).toHaveClass('btn-primary');
-expect(element).toBeDisabled();
+expect(element).toBeInTheDocument();  // Elemento existe en el DOM
+expect(element).toHaveAttribute('src');  // Tiene atributo específico
+expect(element).not.toBeInTheDocument();  // Elemento NO existe
 ```
 
-Estos matchers vienen de `@testing-library/jest-dom` y hacen los tests más legibles.
+Estos matchers vienen de `@testing-library/jest-dom` (importado en `jest.setup.cjs`) y hacen los tests más legibles y expresivos.
 
-## Ejemplo 2: Componente con Estado
+## Ejemplo 2: Componente Complejo - ProjectCard
 
-Ahora veamos un componente más interesante que maneja su propio estado interno. Este es un caso clásico donde **no debemos testear el estado directamente**, sino el comportamiento observable.
+Ahora vamos con un componente mucho más complejo que demuestra testing avanzado: `ProjectCard.tsx`. Este componente incluye:
 
-### Código: src/components/Counter.tsx
+- **Hooks personalizados** (`useAuth`, `useToggle`)
+- **Lógica condicional** basada en autenticación
+- **Interacciones de usuario** (clicks, menu dropdown)
+- **Callbacks** pasados como props
+- **Styled Components** dinámicos
+
+### Código: src/components/cards/ProjectCard.tsx (simplificado)
 
 ```tsx
-import React, { useState } from 'react';
+import React from 'react';
+import styled from 'styled-components';
+import useAuth from '../../hooks/useAuth';
+import useToggle from '../../hooks/useToogle';
+import { Project } from '../../model/project';
 
-export function Counter() {
-  const [count, setCount] = useState(0);
+interface ProjectCardProps {
+  project: Project;
+  closeButton: (element: React.MouseEvent<HTMLElement>, id: string) => void;
+  updateButton: (element: React.MouseEvent<HTMLElement>, project: Project) => void;
+  captionText?: string;
+}
+
+const ProjectCard = (props: ProjectCardProps) => {
+  const { project } = props;
+  const { user } = useAuth();  // Hook: usuario autenticado o null
+  const [isVisible, toggle] = useToggle(false);  // Hook: estado del menu
+
+  const toggleMenu = (element: React.MouseEvent<HTMLElement>) => {
+    element.preventDefault();
+    element.stopPropagation();
+    toggle();
+  };
 
   return (
-    <div>
-      <h2>Count: {count}</h2>
-      <button onClick={() => setCount(count + 1)}>
-        Increment
-      </button>
-      <button onClick={() => setCount(count - 1)}>
-        Decrement
-      </button>
-      <button onClick={() => setCount(0)}>
-        Reset
-      </button>
-    </div>
+    <Wrapper href={project.link} target="_blank" rel="noopener">
+      <CardWrapper>
+        <CardInfo>
+          <CardVersion>
+            <CardVersionText>{project.version}</CardVersionText>
+          </CardVersion>
+          {user && (  // Solo muestra botón si hay usuario autenticado
+            <KebabButton onClick={toggleMenu}>
+              <KebabDot />
+              <KebabDot />
+              <KebabDot />
+            </KebabButton>
+          )}
+        </CardInfo>
+        {user && isVisible && (  // Menu solo visible si autenticado Y toggled
+          <>
+            <MenuDropDownOverlay onClick={toggleMenu} />
+            <MenuDropDown>
+              <MenuDropDownItem
+                isWarning={false}
+                onClick={(e) => props.updateButton(e, project)}
+              >
+                Update
+              </MenuDropDownItem>
+              <MenuDropDownItem
+                isWarning={true}
+                onClick={(e) => {
+                  props.closeButton(e, project._id ?? '');
+                  toggle();
+                }}
+              >
+                Delete
+              </MenuDropDownItem>
+            </MenuDropDown>
+          </>
+        )}
+        <CardCaption data-testid="caption">
+          {props.captionText ? props.captionText : ''}
+        </CardCaption>
+        <CardTitle>{project.title}</CardTitle>
+        <CardDescription>{project.description}</CardDescription>
+      </CardWrapper>
+    </Wrapper>
   );
-}
+};
+
+export default ProjectCard;
 ```
 
-Este componente:
+### Características del componente
 
-- Mantiene un contador en estado local con `useState`
-- Muestra el contador actual
-- Tiene botones para incrementar, decrementar y resetear
+- **Hooks**: `useAuth` (contexto), `useToggle` (estado local)
+- **Lógica condicional**: UI diferente si autenticado vs no autenticado
+- **Interacciones complejas**: Menu dropdown con overlay
+- **Props functions**: Callbacks para update/delete
+- **Data testid**: `data-testid="caption"` para testing específico
 
-Nota que el **estado es completamente privado** al componente. Como usuarios y testers, no nos importa cómo se implementa internamente.
-
-### Test: src/components/\__tests__/Counter.test.tsx
+### Test: src/components/cards/\__tests__/ProjectCard.test.tsx
 
 ```tsx
 import React from 'react';
 import { render, screen, fireEvent } from '@testing-library/react';
-import { Counter } from '../Counter';
+import ProjectCard from '../ProjectCard';
+import useAuth from '../../../hooks/useAuth';
+import { Project } from '../../../model/project';
 
-describe('Counter', () => {
-  
-  it('debe empezar en 0', () => {
-    render(<Counter />);
-    expect(screen.getByText('Count: 0')).toBeInTheDocument();
+// Mock de api-client-factory (necesario para evitar import.meta.env)
+jest.mock('../../../api/api-client-factory');
+
+// Mock del hook useAuth
+jest.mock('../../../hooks/useAuth');
+const mockUseAuth = useAuth as jest.MockedFunction<typeof useAuth>;
+
+describe('ProjectCard', () => {
+  const mockCloseButton = jest.fn();
+  const mockUpdateButton = jest.fn();
+
+  const mockProject: Project = {
+    _id: '123',
+    title: 'Test Project',
+    description: 'A test project description',
+    link: 'https://example.com',
+    version: 'v1.0',
+    tag: 'React',
+    timestamp: Date.now(),
+  };
+
+  beforeEach(() => {
+    jest.clearAllMocks();
   });
 
-  it('debe incrementar al hacer click en Increment', () => {
-    render(<Counter />);
-    
-    const incrementButton = screen.getByText('Increment');
-    fireEvent.click(incrementButton);
-    
-    expect(screen.getByText('Count: 1')).toBeInTheDocument();
+  describe('Renderizado básico', () => {
+    it('debe renderizar información del proyecto', () => {
+      mockUseAuth.mockReturnValue({ 
+        user: undefined, 
+        isLoading: false,
+        login: jest.fn(), 
+        logout: jest.fn(),
+        loadUser: jest.fn()
+      });
+      
+      render(
+        <ProjectCard
+          project={mockProject}
+          closeButton={mockCloseButton}
+          updateButton={mockUpdateButton}
+        />
+      );
+
+      expect(screen.getByText('Test Project')).toBeInTheDocument();
+      expect(screen.getByText('A test project description')).toBeInTheDocument();
+      expect(screen.getByText('v1.0')).toBeInTheDocument();
+      expect(screen.getByText('React')).toBeInTheDocument();
+    });
+
+    it('debe renderizar caption text cuando se proporciona', () => {
+      mockUseAuth.mockReturnValue({ 
+        user: undefined,
+        isLoading: false,
+        login: jest.fn(), 
+        logout: jest.fn(),
+        loadUser: jest.fn()
+      });
+      
+      render(
+        <ProjectCard
+          project={mockProject}
+          closeButton={mockCloseButton}
+          updateButton={mockUpdateButton}
+          captionText="Featured Project"
+        />
+      );
+
+      expect(screen.getByTestId('caption')).toHaveTextContent('Featured Project');
+    });
+
+    it('debe tener un link al proyecto', () => {
+      mockUseAuth.mockReturnValue({ 
+        user: undefined,
+        isLoading: false,
+        login: jest.fn(), 
+        logout: jest.fn(),
+        loadUser: jest.fn()
+      });
+      
+      const { container } = render(
+        <ProjectCard
+          project={mockProject}
+          closeButton={mockCloseButton}
+          updateButton={mockUpdateButton}
+        />
+      );
+
+      const link = container.querySelector('a[href="https://example.com"]');
+      expect(link).toBeInTheDocument();
+      expect(link).toHaveAttribute('target', '_blank');
+      expect(link).toHaveAttribute('rel', 'noopener');
+    });
   });
 
-  it('debe decrementar al hacer click en Decrement', () => {
-    render(<Counter />);
-    
-    const decrementButton = screen.getByText('Decrement');
-    fireEvent.click(decrementButton);
-    
-    expect(screen.getByText('Count: -1')).toBeInTheDocument();
+  describe('Comportamiento con autenticación', () => {
+    it('NO debe mostrar botón kebab cuando no hay usuario', () => {
+      mockUseAuth.mockReturnValue({ 
+        user: undefined,
+        isLoading: false,
+        login: jest.fn(), 
+        logout: jest.fn(),
+        loadUser: jest.fn()
+      });
+      
+      render(
+        <ProjectCard
+          project={mockProject}
+          closeButton={mockCloseButton}
+          updateButton={mockUpdateButton}
+        />
+      );
+
+      // No debe haber botón con 3 puntos
+      const buttons = screen.queryAllByRole('button');
+      expect(buttons).toHaveLength(0);
+    });
+
+    it('debe mostrar botón kebab cuando hay usuario autenticado', () => {
+      mockUseAuth.mockReturnValue({ 
+        user: { _id: 'user1', email: 'test@example.com', active: true },
+        isLoading: false,
+        login: jest.fn(),
+        logout: jest.fn(),
+        loadUser: jest.fn()
+      });
+      
+      render(
+        <ProjectCard
+          project={mockProject}
+          closeButton={mockCloseButton}
+          updateButton={mockUpdateButton}
+        />
+      );
+
+      const buttons = screen.getAllByRole('button');
+      expect(buttons.length).toBeGreaterThan(0);
+    });
   });
 
-  it('debe resetear al hacer click en Reset', () => {
-    render(<Counter />);
-    
-    // Incrementar varias veces
-    const incrementButton = screen.getByText('Increment');
-    fireEvent.click(incrementButton);
-    fireEvent.click(incrementButton);
-    fireEvent.click(incrementButton);
-    
-    // Verificar que cuenta es 3
-    expect(screen.getByText('Count: 3')).toBeInTheDocument();
-    
-    // Reset
-    const resetButton = screen.getByText('Reset');
-    fireEvent.click(resetButton);
-    
-    expect(screen.getByText('Count: 0')).toBeInTheDocument();
+  describe('Interacciones del menu dropdown', () => {
+    beforeEach(() => {
+      mockUseAuth.mockReturnValue({ 
+        user: { _id: 'user1', email: 'test@example.com', active: true },
+        isLoading: false,
+        login: jest.fn(),
+        logout: jest.fn(),
+        loadUser: jest.fn()
+      });
+    });
+
+    it('debe mostrar menu al hacer click en kebab button', () => {
+      render(
+        <ProjectCard
+          project={mockProject}
+          closeButton={mockCloseButton}
+          updateButton={mockUpdateButton}
+        />
+      );
+
+      // Inicialmente el menu no está visible
+      expect(screen.queryByText('Update')).not.toBeInTheDocument();
+      expect(screen.queryByText('Delete')).not.toBeInTheDocument();
+
+      // Click en el botón kebab (primer botón)
+      const kebabButton = screen.getAllByRole('button')[0];
+      fireEvent.click(kebabButton);
+
+      // Ahora el menu debe estar visible
+      expect(screen.getByText('Update')).toBeInTheDocument();
+      expect(screen.getByText('Delete')).toBeInTheDocument();
+    });
+
+    it('debe llamar updateButton al hacer click en Update', () => {
+      render(
+        <ProjectCard
+          project={mockProject}
+          closeButton={mockCloseButton}
+          updateButton={mockUpdateButton}
+        />
+      );
+
+      // Abrir menu
+      const kebabButton = screen.getAllByRole('button')[0];
+      fireEvent.click(kebabButton);
+
+      // Click en Update
+      const updateBtn = screen.getByText('Update');
+      fireEvent.click(updateBtn);
+
+      expect(mockUpdateButton).toHaveBeenCalledTimes(1);
+      expect(mockUpdateButton).toHaveBeenCalledWith(
+        expect.any(Object),  // Event
+        mockProject
+      );
+    });
+
+    it('debe llamar closeButton al hacer click en Delete', () => {
+      render(
+        <ProjectCard
+          project={mockProject}
+          closeButton={mockCloseButton}
+          updateButton={mockUpdateButton}
+        />
+      );
+
+      // Abrir menu
+      const kebabButton = screen.getAllByRole('button')[0];
+      fireEvent.click(kebabButton);
+
+      // Click en Delete
+      const deleteBtn = screen.getByText('Delete');
+      fireEvent.click(deleteBtn);
+
+      expect(mockCloseButton).toHaveBeenCalledTimes(1);
+      expect(mockCloseButton).toHaveBeenCalledWith(
+        expect.any(Object),  // Event
+        '123'  // project._id
+      );
+    });
   });
 });
 ```
 
-### Lecciones del test de Counter
+### Desglosando el Test de ProjectCard
 
-#### No testeamos el estado interno
+Este test demuestra conceptos avanzados de testing en React. Vamos a analizarlo por partes.
 
-Nota que nunca accedemos directamente a `count`. En lugar de eso, verificamos lo que el usuario ve: el texto "Count: X".
-
-```tsx
-// ❌ No hacer (no podemos acceder al estado así)
-expect(component.state.count).toBe(1);
-
-// ✅ Hacer
-expect(screen.getByText('Count: 1')).toBeInTheDocument();
-```
-
-#### Simulamos interacciones reales
-
-Hacemos click en botones tal como lo haría un usuario, y verificamos que el texto cambia. No nos importa que internamente use `useState`, podría usar `useReducer` o cualquier otra cosa.
-
-#### Tests son independientes
-
-Cada test renderiza el componente desde cero. No dependen del estado de tests anteriores.
-
-## Queries de Testing Library
-
-Las **queries** son la forma de encontrar elementos en el DOM. Elegir la query correcta no solo hace tus tests más robustos, sino que también mejora la accesibilidad de tu aplicación.
-
-### Prioridad de selectores
-
-RTL recomienda usar selectores en este orden (de mejor a peor):
-
-#### 1. getByRole - El más accesible
+#### 1. Mocking de Hooks Personalizados
 
 ```tsx
-screen.getByRole('button', { name: /submit/i });
-screen.getByRole('textbox', { name: /email/i });
-screen.getByRole('heading', { level: 1 });
-```
+// Mock del hook useAuth
+jest.mock('../../../hooks/useAuth');
+const mockUseAuth = useAuth as jest.MockedFunction<typeof useAuth>;
 
-**Por qué es el mejor:**
-
-- Refleja cómo usuarios con lectores de pantalla encuentran elementos
-- Fuerza a usar HTML semántico correcto
-- Verifica que los elementos tienen los roles ARIA apropiados
-
-**Roles comunes:**
-
-- `button`: `<button>`, `<input type="button">`
-- `textbox`: `<input type="text">`, `<textarea>`
-- `checkbox`: `<input type="checkbox">`
-- `link`: `<a href="...">`
-- `heading`: `<h1>`, `<h2>`, etc.
-- `listitem`: `<li>`
-
-```tsx
-// Encontrar button con texto específico
-screen.getByRole('button', { name: 'Submit' });
-
-// Encontrar input por su label asociado
-screen.getByRole('textbox', { name: 'Username' });
-
-// Encontrar heading específico
-screen.getByRole('heading', { name: 'Welcome', level: 1 });
-```
-
-#### 2. getByLabelText - Para formularios
-
-```tsx
-screen.getByLabelText('Email');
-screen.getByLabelText(/password/i);
-```
-
-**Cuándo usar:**
-
-- Inputs de formularios con `<label>` asociado
-- Verifica que inputs son accesibles
-
-```tsx
-// HTML
-<label htmlFor="email">Email Address</label>
-<input id="email" type="email" />
-
-// Test
-const emailInput = screen.getByLabelText('Email Address');
-expect(emailInput).toBeInTheDocument();
-```
-
-#### 3. getByPlaceholderText - Con moderación
-
-```tsx
-screen.getByPlaceholderText('Enter email');
-```
-
-**Cuándo usar:**
-
-- Cuando el placeholder es la única forma de identificar el input
-- **Precaución**: Placeholders no son muy accesibles, mejor usar labels
-
-```tsx
-// Aceptable como última opción
-screen.getByPlaceholderText('Search...');
-```
-
-#### 4. getByText - Para contenido visible
-
-```tsx
-screen.getByText('Hello World');
-screen.getByText(/hello/i);  // Case insensitive
-screen.getByText((content, element) => content.startsWith('Hello'));
-```
-
-**Cuándo usar:**
-
-- Texto visible en la página
-- Muy útil para verificar contenido renderizado
-
-```tsx
-// Texto exacto
-expect(screen.getByText('Login successful')).toBeInTheDocument();
-
-// Regex para case-insensitive
-expect(screen.getByText(/loading/i)).toBeInTheDocument();
-
-// Función para matching complejo
-const element = screen.getByText((content) => {
-  return content.includes('items') && content.includes('5');
+// Luego en cada test:
+mockUseAuth.mockReturnValue({ 
+  user: { _id: 'user1', email: 'test@example.com', active: true },
+  login: jest.fn(),
+  logout: jest.fn()
 });
 ```
 
-#### 5. getByTestId - Último recurso
+**¿Por qué mockear hooks?**
 
-```tsx
-screen.getByTestId('custom-element');
-```
+- `useAuth` consume un Context que no existe en el entorno de testing
+- Queremos controlar el estado de autenticación para cada test
+- Podemos probar diferentes escenarios (autenticado vs no autenticado)
 
-**Cuándo usar:**
+**Tipos de retorno del mock:**
 
-- Cuando ningún otro selector funciona
-- Para elementos que no tienen texto o rol significativo
-- Para componentes de terceros difíciles de seleccionar
+- `user: undefined` → Usuario no autenticado
+- `user: { ... }` → Usuario autenticado con datos
 
-```tsx
-// En el componente
-<div data-testid="loading-spinner">
-  {/* Spinner complejo */}
-</div>
+:::tip Principio: Solo Mockear lo Necesario
+En estos tests **NO mockeamos useToggle**. ¿Por qué?
 
-// En el test
-expect(screen.getByTestId('loading-spinner')).toBeInTheDocument();
-```
+- El hook `useToggle` es simple y no tiene dependencias externas
+- Funciona perfectamente en el entorno de test sin mockear
+- Mockear innecesariamente aumenta la complejidad y fragilidad de los tests
 
-**Por qué es último recurso:**
+**Regla general**: Solo mockea cuando sea necesario:
+- ✅ Mockear: APIs externas, contextos complejos, módulos con side effects
+- ❌ No mockear: Hooks simples, utilidades puras, funciones sin dependencias
 
-- No refleja cómo usuarios encuentran elementos
-- No verifica accesibilidad
-- Añade atributos solo para tests (acopla tests con implementación)
-
-### Variantes de queries
-
-Cada query (`getBy`, `queryBy`, `findBy`) tiene un comportamiento diferente cuando el elemento no se encuentra:
-
-#### getBy - Uso más común
-
-```tsx
-const button = screen.getByRole('button');
-```
-
-- **Lanza error** si no encuentra el elemento
-- **Lanza error** si encuentra más de uno
-- **Síncrono**: retorna inmediatamente
-- **Uso**: Cuando esperas que el elemento exista
-
-```tsx
-// ✅ Elemento existe
-expect(screen.getByText('Hello')).toBeInTheDocument();
-
-// ❌ Lanza error si no existe
-screen.getByText('Goodbye'); // Error: Unable to find...
-```
-
-#### queryBy - Para verificar ausencia
-
-```tsx
-const button = screen.queryByRole('button');
-```
-
-- **Retorna null** si no encuentra el elemento
-- **Lanza error** si encuentra más de uno
-- **Síncrono**: retorna inmediatamente
-- **Uso**: Cuando quieres verificar que algo NO existe
-
-```tsx
-// Verificar que elemento no existe
-expect(screen.queryByText('Error message')).not.toBeInTheDocument();
-
-// ✅ Funciona - retorna null
-const missing = screen.queryByText('Not there');
-expect(missing).toBeNull();
-
-// ❌ No usar getBy para verificar ausencia
-expect(screen.getByText('Not there')).not.toBeInTheDocument(); // Lanza error!
-```
-
-#### findBy - Para elementos asíncronos
-
-```tsx
-const element = await screen.findByText('Loaded data');
-```
-
-- **Retorna Promise** que resuelve cuando encuentra el elemento
-- **Rechaza** si no encuentra después de timeout (1000ms por defecto)
-- **Asíncrono**: espera a que el elemento aparezca
-- **Uso**: Elementos que cargan asíncronamente (APIs, lazy loading, etc.)
-
-```tsx
-// Esperar a que aparezca dato cargado de API
-it('muestra datos después de cargar', async () => {
-  render(<UserProfile userId="123" />);
-  
-  // Elemento aparecerá después de fetch
-  const userName = await screen.findByText('John Doe');
-  expect(userName).toBeInTheDocument();
-});
-
-// Con timeout personalizado
-await screen.findByText('Data', {}, { timeout: 3000 });
-```
-
-### getAllBy, queryAllBy, findAllBy
-
-Para cuando esperas **múltiples elementos**:
-
-```tsx
-// Retorna array de elementos
-const buttons = screen.getAllByRole('button');
-expect(buttons).toHaveLength(3);
-
-// queryAllBy - retorna array vacío si no encuentra
-const items = screen.queryAllByRole('listitem');
-expect(items).toHaveLength(0);
-
-// findAllBy - async para múltiples elementos
-const loadedItems = await screen.findAllByRole('listitem');
-expect(loadedItems).toHaveLength(5);
-```
-
-### Resumen de cuándo usar cada variante
-
-| Variante | Cuándo usar | Retorna | Async |
-|----------|-------------|---------|-------|
-| `getBy` | Elemento debe existir | Elemento (o error) | No |
-| `queryBy` | Verificar ausencia | Elemento o null | No |
-| `findBy` | Elemento aparece async | Promise\<Elemento\> | Sí |
-| `getAllBy` | Múltiples elementos existen | Array (o error) | No |
-| `queryAllBy` | Verificar ausencia de múltiples | Array (vacío si no hay) | No |
-| `findAllBy` | Múltiples elementos async | Promise\<Array\> | Sí |
-
-:::tip Consejo Práctico
-Si tu test falla con "Unable to find element", verifica:
-
-1. ¿El elemento existe? Usa `screen.debug()` para ver el DOM
-2. ¿El elemento se carga asíncronamente? Usa `findBy` en lugar de `getBy`
-3. ¿Estás usando el selector correcto? Intenta con `screen.getByRole`
-
+Este es un ejemplo de testing pragmático: usar implementaciones reales cuando sea posible.
 :::
 
+#### 2. Mock de API Client Factory
+
 ```tsx
-// Verificar que existe
-expect(screen.getByText('Loaded')).toBeInTheDocument();
-
-// Verificar que NO existe
-expect(screen.queryByText('Loading')).not.toBeInTheDocument();
-
-// Esperar elemento async
-const element = await screen.findByText('Data loaded');
+jest.mock('../../../api/api-client-factory', () => ({
+  getApiClient: jest.fn(),
+}));
 ```
+
+Este mock es necesario porque:
+
+- El módulo usa `import.meta.env` que puede causar problemas en Jest
+- No queremos hacer llamadas reales a APIs en tests unitarios
+- Nos permite aislar el componente de dependencias externas
+
+#### 3. Datos de Test Realistas
+
+```tsx
+const mockProject: Project = {
+  _id: '123',
+  title: 'Test Project',
+  description: 'A test project description',
+  version: 'v1.0',
+  link: 'https://example.com',
+  tag: 'React',
+  timestamp: Date.now(),
+};
+```
+
+Usamos **objetos completos** que coinciden con el tipo `Project`. Esto:
+
+- Hace el test más realista
+- Evita errores de TypeScript
+- Documenta la estructura de datos esperada
+- Incluye todos los campos requeridos (como `timestamp`)
+
+#### 4. Testing de Renderizado Condicional
+
+```tsx
+it('NO debe mostrar botón kebab cuando no hay usuario', () => {
+  mockUseAuth.mockReturnValue({ 
+    user: undefined, 
+    isLoading: false, 
+    loadUser: jest.fn() 
+  });
+  render(<ProjectCard ... />);
+  
+  const buttons = screen.queryAllByRole('button');
+  expect(buttons).toHaveLength(0);
+});
+
+it('debe mostrar botón kebab cuando hay usuario autenticado', () => {
+  mockUseAuth.mockReturnValue({ 
+    user: { name: 'Test User' }, 
+    isLoading: false, 
+    loadUser: jest.fn() 
+  });
+  render(<ProjectCard ... />);
+  
+  const buttons = screen.getAllByRole('button');
+  expect(buttons.length).toBeGreaterThan(0);
+});
+```
+
+**Patrón importante**: Testear **ambos casos** del condicional `{user && <Component />}`.
+
+- Sin usuario → No hay botones
+- Con usuario → Hay botones
+
+Nota el uso de `queryAllByRole` (no lanza error si no encuentra) vs `getAllByRole` (lanza error).
+
+#### 5. Testing de Interacciones en Secuencia
+
+```tsx
+it('debe mostrar menu al hacer click en kebab button', () => {
+  // 1. Estado inicial
+  expect(screen.queryByText('Update')).not.toBeInTheDocument();
+  
+  // 2. Acción del usuario
+  const kebabButton = screen.getAllByRole('button')[0];
+  fireEvent.click(kebabButton);
+  
+  // 3. Nuevo estado
+  expect(screen.getByText('Update')).toBeInTheDocument();
+});
+```
+
+Este patrón AAA (Arrange-Act-Assert) extendido:
+
+1. **Arrange**: Verificar estado inicial
+2. **Act**: Simular interacción
+3. **Assert**: Verificar nuevo estado
+
+Demuestra que el toggle **funciona correctamente**.
+
+#### 6. Testing de Callbacks
+
+```tsx
+it('debe llamar updateButton al hacer click en Update', () => {
+  // Abrir menu
+  const kebabButton = screen.getAllByRole('button')[0];
+  fireEvent.click(kebabButton);
+  
+  // Click en Update
+  const updateBtn = screen.getByText('Update');
+  fireEvent.click(updateBtn);
+  
+  expect(mockUpdateButton).toHaveBeenCalledTimes(1);
+  expect(mockUpdateButton).toHaveBeenCalledWith(
+    expect.any(Object),  // Event object
+    mockProject          // Project data
+  );
+});
+```
+
+Verificamos que:
+
+- La función callback se llamó
+- Se llamó exactamente 1 vez
+- Se llamó con los argumentos correctos
+
+**expect.any(Object)**: No nos importa el objeto Event exacto, solo que sea un objeto.
+
+#### 7. Using data-testid
+
+```tsx
+// En el componente:
+<CardCaption data-testid="caption">
+  {props.captionText ? props.captionText : ''}
+</CardCaption>
+
+// En el test:
+expect(screen.getByTestId('caption')).toHaveTextContent('Featured Project');
+```
+
+`data-testid` es el **último recurso** cuando no hay forma accesible de seleccionar un elemento. Úsalo solo cuando:
+
+- No tiene texto único
+- No tiene rol ARIA
+- No tiene label
+- Es puramente visual/decorativo
+
+#### 8. Uso de container.querySelector
+
+```tsx
+const { container } = render(<ProjectCard ... />);
+const link = container.querySelector('a[href="https://example.com"]');
+expect(link).toHaveAttribute('target', '_blank');
+```
+
+`container.querySelector` permite usar selectores CSS cuando las queries de RTL no son suficientes. Útil para:
+
+- Atributos específicos
+- Relaciones parent-child complejas
+- Pseudo-selectores
+
+Pero úsalo **con moderación**: prefiere queries accesibles.
+
+## Mejores Prácticas de Testing en React
+
+Basándonos en los ejemplos reales de Taller-Testing-Security, estas son las mejores prácticas:
+
+### 1. Organiza tests con describe anidados
+
+```tsx
+describe('ProjectCard', () => {
+  describe('Renderizado básico', () => {
+    // Tests de renderizado
+  });
+  
+  describe('Comportamiento con autenticación', () => {
+    // Tests condicionales
+  });
+  
+  describe('Interacciones del menu dropdown', () => {
+    // Tests de interacción
+  });
+});
+```
+
+Esto hace los tests más legibles y permite setup específico por sección.
+
+### 2. beforeEach para limpieza de mocks
+
+```tsx
+beforeEach(() => {
+  jest.clearAllMocks();
+});
+```
+
+Asegura que los mocks no se contaminen entre tests.
+
+### 3. Usa TypeScript para datos de test
+
+```tsx
+const mockProject: Project = { ... };
+```
+
+TypeScript te obliga a usar la estructura correcta y documenta los tipos.
+
+### 4. Mock solo lo necesario
+
+- ✅ Mock: Hooks de contexto, dependencias externas
+- ❌ No mock: Lógica del componente, estado local simple
+
+### 5. Testea comportamiento, no implementación
+
+```tsx
+// ❌ Mal
+expect(component.state.isVisible).toBe(true);
+
+// ✅ Bien
+expect(screen.getByText('Update')).toBeInTheDocument();
+```
+
+### 6. Usa queries accesibles
+
+Orden de preferencia:
+
+1. `getByRole` - Mejor para accesibilidad
+2. `getByLabelText` - Para forms
+3. `getByText` - Para contenido visible
+4. `getByTestId` - Último recurso
+
+### 7. Nombres descriptivos de tests
+
+```tsx
+// ❌ Mal
+it('works', () => { ... });
+
+// ✅ Bien
+it('debe mostrar menu al hacer click en kebab button', () => { ... });
+```
+
+El nombre debe describir **qué** testeas y **qué** esperas que pase.

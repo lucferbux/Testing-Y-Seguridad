@@ -85,40 +85,9 @@ function HomepageContent() {
               <Link to="/docs/sesion-01/intro">Ver contenido →</Link>
             </div>
           </div>
-          <div className={clsx('col col--6')}>
-            <div className={styles.sessionCard}>
-              <Heading as="h4">Sesión 2: Testing de Integración</Heading>
-              <p>
-                Testing de Context API, custom hooks y APIs con Supertest y 
-                Mock Service Worker (MSW).
-              </p>
-              <Link to="/docs/sesion-02/intro">Ver contenido →</Link>
-            </div>
-          </div>
         </div>
 
-        <div className="row">
-          <div className={clsx('col col--6')}>
-            <div className={styles.sessionCard}>
-              <Heading as="h4">Sesión 3: Testing E2E con Cypress</Heading>
-              <p>
-                Testing End-to-End con Cypress. Flujos completos de usuario, 
-                interceptación de peticiones y custom commands.
-              </p>
-              <Link to="/docs/sesion-03/intro">Ver contenido →</Link>
-            </div>
-          </div>
-          <div className={clsx('col col--6')}>
-            <div className={styles.sessionCard}>
-              <Heading as="h4">Sesión 4: Seguridad y Desarrollo Seguro</Heading>
-              <p>
-                OWASP Top 10, prevención de vulnerabilidades, Helmet.js, 
-                validación de datos y gestión de secretos.
-              </p>
-              <Link to="/docs/sesion-04/intro">Ver contenido →</Link>
-            </div>
-          </div>
-        </div>
+
 
         <div className="row margin-top--xl">
           <div className="col col--12">

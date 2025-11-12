@@ -101,18 +101,6 @@ const config: Config = {
               label: 'Testing Unitario',
               to: '/docs/sesion-01/intro',
             },
-            {
-              label: 'Testing de Integración',
-              to: '/docs/sesion-02/intro',
-            },
-            {
-              label: 'Testing E2E con Cypress',
-              to: '/docs/sesion-03/intro',
-            },
-            {
-              label: 'Seguridad',
-              to: '/docs/sesion-04/intro',
-            },
           ],
         },
         {

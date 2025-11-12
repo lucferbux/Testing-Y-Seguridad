@@ -99,16 +99,17 @@ Los tests actúan como un **sistema de feedback** que te dice cuándo tu diseño
 La **Pirámide de Testing** es un concepto fundamental que nos ayuda a entender cómo distribuir nuestros esfuerzos de testing. Fue popularizada por Mike Cohn y representa la proporción ideal de diferentes tipos de tests en una aplicación.
 
 ```text
-                    /\
-                   /  \
-                  / E2E \
-                 /--------\
-                /          \
-               / Integración\
-              /--------------\
-             /                \
-            /     Unitarios    \
-           /____________________\
+                     / \
+                    /   \
+                   / E2E \
+                  /-------\
+                 /         \
+                /           \
+               / Integración \
+              /---------------\
+             /                 \
+            /     Unitarios     \
+           /_____________________\
 ```
 
 La pirámide nos muestra visualmente que deberíamos tener:

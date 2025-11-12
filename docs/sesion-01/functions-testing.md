@@ -3,281 +3,699 @@ sidebar_position: 5
 title: "Testing de Funciones"
 ---
 
-El testing unitario de funciones es la base de una suite de tests sólida. En esta sección aprenderemos a testear diferentes tipos de funciones, desde las más simples hasta las más complejas, aplicando las mejores prácticas y patrones que hemos aprendido.
+El testing unitario de funciones es la base de una suite de tests sólida. En esta sección aprenderemos a testear diferentes tipos de funciones del proyecto **Taller-Testing-Security**, desde funciones puras simples hasta funciones que interactúan con localStorage y decodifican JWTs.
 
-## Ejemplo 1: Función Pura Simple
+## Contexto: Módulo auth.ts
 
-Las funciones puras son las más fáciles de testear porque:
+El archivo `src/utils/auth.ts` del proyecto contiene la lógica de autenticación de la aplicación. Incluye funciones para:
 
-- No tienen efectos secundarios
-- Siempre devuelven el mismo resultado para los mismos parámetros
-- No dependen de estado externo
+- Guardar y recuperar tokens JWT
+- Decodificar tokens
+- Validar expiración de tokens
+- Gestionar el estado de autenticación
 
-Comencemos con un ejemplo clásico: funciones matemáticas.
+Estas funciones son **críticas** para la seguridad de la aplicación, por lo que es esencial testearlas exhaustivamente.
 
-### Código: src/utils/math.ts
+:::warning Nota sobre import.meta en Jest
+El proyecto usa Vite, que utiliza `import.meta.env` para variables de entorno. Jest no puede transformar esta sintaxis directamente. Para testear módulos que usan `import.meta.env`, debemos crear mocks manuales en `src/utils/__mocks__/`.
+
+**Ejemplo**: Para testear `config.ts`, creamos `src/utils/__mocks__/config.ts`:
 
 ```typescript
-export function sum(a: number, b: number): number {
-  return a + b;
-}
-
-export function multiply(a: number, b: number): number {
-  return a * b;
-}
-
-export function divide(a: number, b: number): number {
-  if (b === 0) {
-    throw new Error('Division by zero');
-  }
-  return a / b;
-}
+// Mock del módulo config.ts para tests
+export const API_BASE_URI = 'http://localhost:3000/api';
 ```
 
-Estas funciones son **puras**: dado el mismo input, siempre producen el mismo output, sin efectos secundarios. Son ideales para testing unitario.
+Luego en el test usamos `jest.mock('../config')` para cargar el mock automáticamente.
+:::
 
-### Test: src/utils/__tests__/math.test.ts
+## Ejemplo 1: Testing de Configuración Simple
+
+Empecemos con algo sencillo: testear el módulo de configuración que expone la URL de la API.
+
+### Código: src/utils/config.ts
 
 ```typescript
-import { sum, multiply, divide } from '../math';
+const baseUrl = import.meta.env.VITE_BASE_URI;
+let apiBaseUrl = import.meta.env.VITE_API_URI;
 
-describe('Math Utils', () => {
-  
-  describe('sum', () => {
-    it('debe sumar dos números positivos', () => {
-      expect(sum(2, 3)).toBe(5);
-    });
+if (baseUrl) {
+  apiBaseUrl = baseUrl + '/_/api';
+}
 
-    it('debe sumar números negativos', () => {
-      expect(sum(-2, -3)).toBe(-5);
-    });
+export const API_BASE_URI = apiBaseUrl;
+```
 
-    it('debe sumar número positivo y negativo', () => {
-      expect(sum(5, -3)).toBe(2);
-    });
+Esta es una función muy simple que lee variables de entorno y exporta una constante. Aunque simple, es importante testearla porque toda la aplicación depende de ella para hacer llamadas a la API.
 
-    it('debe sumar con cero', () => {
-      expect(sum(5, 0)).toBe(5);
-    });
+### Test: `src/utils/__tests__/config.test.ts`
+
+```typescript
+// Mock del módulo config para evitar problemas con import.meta
+jest.mock('../config');
+
+import { API_BASE_URI } from '../config';
+
+describe('Config Module', () => {
+  it('exports API_BASE_URI', () => {
+    expect(API_BASE_URI).toBeDefined();
   });
 
-  describe('multiply', () => {
-    it('debe multiplicar dos números', () => {
-      expect(multiply(3, 4)).toBe(12);
-    });
-
-    it('debe devolver 0 al multiplicar por 0', () => {
-      expect(multiply(5, 0)).toBe(0);
-    });
-  });
-
-  describe('divide', () => {
-    it('debe dividir dos números', () => {
-      expect(divide(10, 2)).toBe(5);
-    });
-
-    it('debe lanzar error al dividir por cero', () => {
-      expect(() => divide(10, 0)).toThrow('Division by zero');
-    });
+  it('API_BASE_URI contains localhost URL', () => {
+    expect(API_BASE_URI).toBe('http://localhost:3000/api');
   });
 });
 ```
 
 ### Análisis del test
 
-**Organización con `describe` anidados**
+#### jest.mock('../config')
 
-Nota cómo usamos `describe` anidados para organizar los tests:
-- El `describe` principal agrupa todas las funciones de math utils
-- Cada función tiene su propio `describe`
-- Dentro, cada `it` testea un comportamiento específico
+Esta línea es crucial. Le dice a Jest que use el mock manual de `config.ts` en lugar del archivo real. El mock está en `src/utils/__mocks__/config.ts` y exporta valores fijos para testing.
 
-Esto genera output legible:
+**¿Por qué necesitamos esto?**
 
-```text
-Math Utils
-  sum
-    ✓ debe sumar dos números positivos
-    ✓ debe sumar números negativos
-    ✓ debe sumar número positivo y negativo
-    ✓ debe sumar con cero
-  multiply
-    ✓ debe multiplicar dos números
-    ✓ debe devolver 0 al multiplicar por 0
-  divide
-    ✓ debe dividir dos números
-    ✓ debe lanzar error al dividir por cero
-```
+- `import.meta.env` es específico de Vite y no funciona en Jest (entorno Node.js)
+- ts-jest no puede transformar `import.meta` correctamente
+- El mock nos da control total sobre los valores en tests
 
-### Testing de casos edge
-
-Observa que no solo probamos el "happy path" (casos normales), sino también **casos edge**:
-
-- Números negativos
-- Cero
-- Combinaciones de positivos y negativos
-
-Esto asegura que la función es robusta y maneja todos los casos correctamente.
-
-### Testing de excepciones
-
-Para testear que una función lanza un error, envolvemos la llamada en una arrow function:
+#### expect.toBeDefined()
 
 ```typescript
-expect(() => divide(10, 0)).toThrow('Division by zero');
+expect(API_BASE_URI).toBeDefined();
 ```
 
-Esto es necesario porque si llamáramos `divide(10, 0)` directamente, el error se lanzaría inmediatamente y el test fallaría antes de poder capturarlo.
+Verifica que la exportación existe. Es útil para detectar:
 
-## Ejemplo 2: Validación de Strings
+- Typos en nombres de exports
+- Problemas de importación
+- Configuración incorrecta del módulo
+
+#### Testing de valores exactos
+
+```typescript
+expect(API_BASE_URI).toBe('http://localhost:3000/api');
+```
+
+Verificamos el valor exacto que definimos en el mock. Esto asegura que:
+
+- El mock se está cargando correctamente  
+- La configuración de Jest funciona
+- Otros tests pueden confiar en esta URL
+
+:::tip Ventaja del mock manual
+Al usar un mock manual, todos los tests que importen `config.ts` usarán automáticamente los valores mockeados. No necesitas mockear en cada archivo de test.
+:::
+
+## Ejemplo 2: Testing con localStorage y jwt-decode
+
+Ahora vamos a testear funciones más complejas que tienen **dependencias externas**: localStorage para persistencia y jwt-decode para decodificar tokens.
+
+### Código: src/utils/auth.ts
+
+```typescript
+import jwt_decode from 'jwt-decode';
+
+interface Token {
+  accessToken: string;
+  notBeforeTimestampInMillis: number;
+  expirationTimestampInMillis: number;
+}
+
+interface JWTPayload {
+  _id: string;
+  email: string;
+  iat: number; // issued at (segundos)
+  exp: number; // expiration (segundos)
+}
+
+export function setAuthToken(accessToken: string) {
+  const tokenPayload = jwt_decode<JWTPayload>(accessToken);
+  const token: Token = {
+    accessToken: accessToken,
+    notBeforeTimestampInMillis: tokenPayload.iat * 1000, // Convertir a milisegundos
+    expirationTimestampInMillis: tokenPayload.exp * 1000
+  };
+  localStorage.setItem('authToken', JSON.stringify(token));
+}
+
+export function removeAuthToken() {
+  localStorage.removeItem('authToken');
+}
+```
+
+### Test: src/utils/\__tests__/auth.test.ts
+
+```typescript
+import { setAuthToken, removeAuthToken } from '../auth';
+import { tokenKey } from '../../constants/config';
+
+// Mock de jwt-decode
+jest.mock('jwt-decode', () => {
+  return jest.fn(() => ({
+    _id: '123456',
+    email: 'test@example.com',
+    iat: 1609459200, // 2021-01-01 00:00:00 UTC (segundos)
+    exp: 1609545600, // 2021-01-02 00:00:00 UTC (segundos)
+  }));
+});
+
+describe('auth.ts - Utilidades de autenticación', () => {
+  // Mock de localStorage
+  let localStorageMock: { [key: string]: string };
+  
+  beforeEach(() => {
+    // Crear un objeto para simular localStorage
+    localStorageMock = {};
+
+    // Mockear métodos de localStorage
+    Storage.prototype.getItem = jest.fn((key: string) => localStorageMock[key] || null);
+    Storage.prototype.setItem = jest.fn((key: string, value: string) => {
+      localStorageMock[key] = value;
+    });
+    Storage.prototype.removeItem = jest.fn((key: string) => {
+      delete localStorageMock[key];
+    });
+    Storage.prototype.clear = jest.fn(() => {
+      localStorageMock = {};
+    });
+  });
+
+  afterEach(() => {
+    // Limpiar mocks después de cada test
+    jest.clearAllMocks();
+  });
+
+  describe('setAuthToken', () => {
+    it('debe guardar el token en localStorage', () => {
+      const mockToken = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.test.token';
+      
+      setAuthToken(mockToken);
+
+      // Verificar que setItem fue llamado
+      expect(localStorage.setItem).toHaveBeenCalledTimes(1);
+      expect(localStorage.setItem).toHaveBeenCalledWith(
+        tokenKey,
+        expect.any(String)
+      );
+    });
+
+    it('debe convertir timestamps de segundos a milisegundos', () => {
+      const mockToken = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.test.token';
+      
+      setAuthToken(mockToken);
+
+      const savedValue = localStorageMock[tokenKey];
+      const parsedToken = JSON.parse(savedValue);
+
+      // JWT usa timestamps en segundos, debemos convertir a milisegundos
+      // Verificar que el número es razonable (timestamp en milisegundos es mucho mayor)
+      expect(parsedToken.notBeforeTimestampInMillis).toBeGreaterThan(1000000000000);
+      expect(parsedToken.expirationTimestampInMillis).toBeGreaterThan(1000000000000);
+    });
+  });
+
+  describe('removeAuthToken', () => {
+    it('debe eliminar el token de localStorage', () => {
+      // Primero guardamos un token
+      localStorage.setItem(tokenKey, JSON.stringify({
+        accessToken: 'test-token',
+        notBeforeTimestampInMillis: Date.now(),
+        expirationTimestampInMillis: Date.now() + 3600000,
+      }));
+
+      expect(localStorage.getItem(tokenKey)).toBeTruthy();
+
+      // Removemos el token
+      removeAuthToken();
+
+      expect(localStorage.getItem(tokenKey)).toBeNull();
+    });
+
+    it('debe funcionar aunque no haya token', () => {
+      expect(localStorage.getItem(tokenKey)).toBeNull();
+
+      // No debe lanzar error
+      expect(() => removeAuthToken()).not.toThrow();
+    });
+  });
+
+});
+```
+
+### Análisis del test
+
+#### Testing de constantes exportadas
+
+Aunque `API_BASE_URI` es solo una constante, testearla es útil porque:
+
+- Verifica que la configuración de jest.setup.js funciona correctamente
+- Documenta qué valor se espera en tests
+- Detecta si alguien cambia accidentalmente la lógica de configuración
+
+#### Uso de toBeDefined() y toBe()
+
+```typescript
+expect(API_BASE_URI).toBeDefined();
+expect(typeof API_BASE_URI).toBe('string');
+```
+
+Primero verificamos que existe, luego que es del tipo correcto. Esto es útil para detectar errores de configuración temprano.
+
+#### Validación con regex
+
+```typescript
+expect(API_BASE_URI).toMatch(/^https?:\/\//);
+```
+
+El matcher `toMatch()` acepta expresiones regulares, permitiendo validar formatos complejos como URLs.
+
+## Ejemplo 2: Testing con localStorage
 
 Las funciones de validación son extremadamente comunes en aplicaciones web. Validar datos de usuario es crucial para la seguridad y la experiencia de usuario. Veamos cómo testear validadores de forma exhaustiva.
 
-### Código: src/utils/validators.ts
+## Ejemplo 2: Funciones con Efectos Secundarios (localStorage)
+
+Las funciones que interactúan con el navegador (localStorage, sessionStorage, cookies) son más complejas de testear porque dependen de APIs que no existen en el entorno de testing de Node.js. Necesitamos **mockearlas**.
+
+### Código: src/utils/auth.ts (setAuthToken y removeAuthToken)
 
 ```typescript
-export function isValidEmail(email: string): boolean {
-  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-  return emailRegex.test(email);
+import jwt_decode from 'jwt-decode';
+import { tokenKey } from '../constants/config';
+
+interface Token {
+  accessToken: string;
+  notBeforeTimestampInMillis: number;
+  expirationTimestampInMillis: number;
 }
 
-export function isStrongPassword(password: string): boolean {
-  // Mínimo 8 caracteres, una mayúscula, una minúscula, un número
-  if (password.length < 8) return false;
-  if (!/[A-Z]/.test(password)) return false;
-  if (!/[a-z]/.test(password)) return false;
-  if (!/[0-9]/.test(password)) return false;
-  return true;
+interface JWTPayload {
+  _id: string;
+  email: string;
+  iat: number;
+  exp: number;
 }
 
-export function sanitizeInput(input: string): string {
-  return input
-    .trim()
-    .replace(/[<>]/g, '') // Remover < y >
-    .substring(0, 200);   // Limitar longitud
+export function setAuthToken(accessToken: string) {
+  const tokenPayload = jwt_decode<JWTPayload>(accessToken);
+  const token: Token = {
+    accessToken: accessToken,
+    notBeforeTimestampInMillis: tokenPayload.iat * 1000,
+    expirationTimestampInMillis: tokenPayload.exp * 1000
+  };
+  localStorage.setItem(tokenKey, JSON.stringify(token));
+}
+
+export function removeAuthToken() {
+  localStorage.removeItem(tokenKey);
 }
 ```
 
-Estas funciones son más complejas que las matemáticas porque:
+Estas funciones:
 
-- **isValidEmail**: Usa regex para validar formato
-- **isStrongPassword**: Tiene múltiples condiciones que deben cumplirse
-- **sanitizeInput**: Transforma el input (no solo lo valida)
+- **setAuthToken**: Decodifica un JWT y lo guarda en localStorage
+- **removeAuthToken**: Elimina el token de localStorage
 
-### Test: src/utils/\__tests__/validators.test.ts
+El desafío es que `localStorage` no existe en Jest/Node.js, así que debemos mockearlo.
+
+### Test: `src/utils/__tests__/auth.test.ts`
 
 ```typescript
-import { isValidEmail, isStrongPassword, sanitizeInput } from '../validators';
+import { setAuthToken, removeAuthToken } from '../auth';
 
-describe('Validators', () => {
-  
-  describe('isValidEmail', () => {
-    it('debe validar email correcto', () => {
-      expect(isValidEmail('user@example.com')).toBe(true);
+// Mock de jwt-decode
+jest.mock('jwt-decode', () => ({
+  __esModule: true,
+  default: jest.fn((token: string) => ({
+    _id: 'user123',
+    email: 'test@example.com',
+    iat: Math.floor(Date.now() / 1000),
+    exp: Math.floor(Date.now() / 1000) + 3600, // Expira en 1 hora
+  })),
+}));
+
+describe('auth utils - localStorage', () => {
+  // Mock de localStorage
+  let localStorageMock: { [key: string]: string };
+
+  beforeEach(() => {
+    // Crear un objeto para simular localStorage
+    localStorageMock = {};
+
+    // Mockear métodos de localStorage
+    Storage.prototype.getItem = jest.fn((key: string) => localStorageMock[key] || null);
+    Storage.prototype.setItem = jest.fn((key: string, value: string) => {
+      localStorageMock[key] = value;
     });
-
-    it('debe rechazar email sin @', () => {
-      expect(isValidEmail('userexample.com')).toBe(false);
+    Storage.prototype.removeItem = jest.fn((key: string) => {
+      delete localStorageMock[key];
     });
-
-    it('debe rechazar email sin dominio', () => {
-      expect(isValidEmail('user@')).toBe(false);
-    });
-
-    it('debe rechazar email con espacios', () => {
-      expect(isValidEmail('user @example.com')).toBe(false);
-    });
-
-    it('debe rechazar string vacío', () => {
-      expect(isValidEmail('')).toBe(false);
-    });
-  });
-
-  describe('isStrongPassword', () => {
-    it('debe validar contraseña fuerte', () => {
-      expect(isStrongPassword('Password123')).toBe(true);
-    });
-
-    it('debe rechazar contraseña corta', () => {
-      expect(isStrongPassword('Pass1')).toBe(false);
-    });
-
-    it('debe rechazar sin mayúscula', () => {
-      expect(isStrongPassword('password123')).toBe(false);
-    });
-
-    it('debe rechazar sin minúscula', () => {
-      expect(isStrongPassword('PASSWORD123')).toBe(false);
-    });
-
-    it('debe rechazar sin número', () => {
-      expect(isStrongPassword('Password')).toBe(false);
+    Storage.prototype.clear = jest.fn(() => {
+      localStorageMock = {};
     });
   });
 
-  describe('sanitizeInput', () => {
-    it('debe eliminar espacios al inicio y final', () => {
-      expect(sanitizeInput('  texto  ')).toBe('texto');
+  afterEach(() => {
+    // Limpiar mocks después de cada test
+    jest.clearAllMocks();
+  });
+
+  describe('setAuthToken', () => {
+    it('debe guardar el token en localStorage', () => {
+      const mockToken = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.test.token';
+      
+      setAuthToken(mockToken);
+
+      // Verificar que setItem fue llamado
+      expect(localStorage.setItem).toHaveBeenCalledTimes(1);
+      expect(localStorage.setItem).toHaveBeenCalledWith(
+        'authToken',
+        expect.any(String)
+      );
     });
 
-    it('debe eliminar etiquetas HTML', () => {
-      expect(sanitizeInput('<script>alert("xss")</script>'))
-        .toBe('scriptalert("xss")/script');
+    it('debe almacenar un objeto Token con estructura correcta', () => {
+      const mockToken = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.test.token';
+      
+      setAuthToken(mockToken);
+
+      // Obtener el valor guardado
+      const savedValue = localStorageMock['authToken'];
+      const parsedToken = JSON.parse(savedValue);
+
+      // Verificar estructura del token
+      expect(parsedToken).toHaveProperty('accessToken', mockToken);
+      expect(parsedToken).toHaveProperty('notBeforeTimestampInMillis');
+      expect(parsedToken).toHaveProperty('expirationTimestampInMillis');
+      expect(typeof parsedToken.notBeforeTimestampInMillis).toBe('number');
+      expect(typeof parsedToken.expirationTimestampInMillis).toBe('number');
     });
 
-    it('debe limitar longitud a 200 caracteres', () => {
-      const longText = 'a'.repeat(300);
-      expect(sanitizeInput(longText).length).toBe(200);
+    it('debe convertir timestamps de segundos a milisegundos', () => {
+      const mockToken = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.test.token';
+      
+      setAuthToken(mockToken);
+
+      const savedValue = localStorageMock['authToken'];
+      const parsedToken = JSON.parse(savedValue);
+
+      // JWT usa timestamps en segundos, debemos convertir a milisegundos
+      // Verificar que el número es razonable (timestamp en milisegundos es mucho mayor)
+      expect(parsedToken.notBeforeTimestampInMillis).toBeGreaterThan(1000000000000);
+      expect(parsedToken.expirationTimestampInMillis).toBeGreaterThan(1000000000000);
+    });
+  });
+
+  describe('removeAuthToken', () => {
+    it('debe eliminar el token de localStorage', () => {
+      // Primero guardamos un token
+      localStorageMock['authToken'] = JSON.stringify({
+        accessToken: 'some-token',
+        notBeforeTimestampInMillis: Date.now(),
+        expirationTimestampInMillis: Date.now() + 3600000,
+      });
+
+      // Luego lo removemos
+      removeAuthToken();
+
+      // Verificar que removeItem fue llamado
+      expect(localStorage.removeItem).toHaveBeenCalledWith('authToken');
+      expect(localStorageMock['authToken']).toBeUndefined();
+    });
+
+    it('debe ser seguro llamar removeAuthToken sin token existente', () => {
+      // No hay token guardado
+      expect(localStorageMock['authToken']).toBeUndefined();
+
+      // No debe lanzar error
+      expect(() => removeAuthToken()).not.toThrow();
+      
+      expect(localStorage.removeItem).toHaveBeenCalledWith('authToken');
     });
   });
 });
 ```
 
-### Análisis de los tests de validación
+### Análisis detallado del test
 
-**Testing exhaustivo de `isValidEmail`**
-
-Para una función de validación, es crucial testear tanto casos válidos como inválidos. Nota cómo testeamos:
-
-- ✅ Email válido típico: `user@example.com`
-- ❌ Sin @: detecta formato incorrecto básico
-- ❌ Sin dominio: detecta emails incompletos
-- ❌ Con espacios: detecta caracteres inválidos
-- ❌ String vacío: maneja casos edge
-
-**Estrategia para `isStrongPassword`**
-
-Para una función con múltiples condiciones, testea cada condición individualmente:
+#### Setup del mock de localStorage
 
 ```typescript
-it('debe validar contraseña fuerte', () => {
-  expect(isStrongPassword('Password123')).toBe(true); // Happy path
+beforeEach(() => {
+  localStorageMock = {};
+  Storage.prototype.setItem = jest.fn((key, value) => {
+    localStorageMock[key] = value;
+  });
+  // ...
 });
-
-it('debe rechazar contraseña corta', () => {
-  expect(isStrongPassword('Pass1')).toBe(false); // Falla: longitud
-});
-
-it('debe rechazar sin mayúscula', () => {
-  expect(isStrongPassword('password123')).toBe(false); // Falla: mayúscula
-});
-
-// ... un test por cada condición
 ```
 
-Esto hace que cuando un test falla, sepas **exactamente** qué condición no se cumple.
+Creamos un mock completo de localStorage:
 
-### Testing de transformaciones
+- **Objeto `localStorageMock`**: Simula el almacenamiento real
+- **Mock functions**: `setItem`, `getItem`, `removeItem` son jest.fn() que también actualizan el objeto
+- **beforeEach**: Resetea el estado antes de cada test para aislamiento
 
-`sanitizeInput` no solo valida, sino que **transforma** el input. Los tests verifican cada transformación:
+#### Verificación de llamadas a mocks
 
-- Trim de espacios
-- Remoción de caracteres peligrosos (`<>`)
-- Limitación de longitud
+```typescript
+expect(localStorage.setItem).toHaveBeenCalledTimes(1);
+expect(localStorage.setItem).toHaveBeenCalledWith('authToken', expect.any(String));
+```
 
-:::tip Buena práctica
-Cuando una función tiene múltiples responsabilidades (como `sanitizeInput`), considera si debería dividirse en funciones más pequeñas. Por ejemplo: `trim()`, `removeHtmlChars()`, `limitLength()`. Esto haría el código más testeable y mantenible.
-:::
+Con `jest.fn()` podemos verificar:
+
+- **Cuántas veces** se llamó la función
+- **Con qué argumentos** se llamó
+- El **orden** de las llamadas
+
+#### expect.any(String)
+
+```typescript
+expect(localStorage.setItem).toHaveBeenCalledWith('authToken', expect.any(String));
+```
+
+`expect.any(Type)` es útil cuando no nos importa el valor exacto, solo el tipo. En este caso, sabemos que el segundo argumento debe ser un string (JSON), pero no nos importa el valor exacto.
+
+#### Testing de transformaciones de datos
+
+```typescript
+it('debe convertir timestamps de segundos a milisegundos', () => {
+  // JWT usa segundos, JavaScript usa milisegundos
+  expect(parsedToken.notBeforeTimestampInMillis).toBeGreaterThan(1000000000000);
+});
+```
+
+Este test verifica que la conversión de unidades (segundos → milisegundos) se hace correctamente. Es un caso edge que es fácil de romper si alguien modifica el código.
+
+## Ejemplo 3: Testing de Validación de Tokens
+
+En este ejemplo vamos a testear la función `isTokenActive()` del archivo `src/utils/auth.ts`, que verifica si un token JWT es válido comprobando sus timestamps de expiración y activación.
+
+### Función a testear
+
+```typescript
+// src/utils/auth.ts
+function isTokenActive(): boolean {
+  const token = getToken();
+  const currentTimestamp = Date.now();
+
+  return !!(
+    token &&
+    token.expirationTimestampInMillis - currentTimestamp > 0 &&
+    token.notBeforeTimestampInMillis <= currentTimestamp
+  );
+}
+```
+
+Esta función:
+
+1. Obtiene el token del localStorage
+2. Comprueba que el token exista
+3. Verifica que no haya expirado (`expirationTimestampInMillis > ahora`)
+4. Verifica que ya esté activo (`notBeforeTimestampInMillis <= ahora`)
+
+### Test: src/utils/\__tests__/auth-validation.test.ts
+
+```typescript
+import { isTokenActive } from '../auth';
+
+// Mock de jwt-decode
+jest.mock('jwt-decode', () => {
+  return jest.fn(() => ({
+    _id: '123',
+    email: 'test@example.com',
+    iat: Math.floor(Date.now() / 1000) - 3600, // Emitido hace 1 hora
+    exp: Math.floor(Date.now() / 1000) + 3600, // Expira en 1 hora
+  }));
+});
+
+describe('isTokenActive', () => {
+  let localStorageMock: { [key: string]: string };
+
+  beforeEach(() => {
+    // Mock completo de localStorage
+    localStorageMock = {};
+    
+    Storage.prototype.getItem = jest.fn((key: string) => localStorageMock[key] || null);
+    Storage.prototype.setItem = jest.fn((key: string, value: string) => {
+      localStorageMock[key] = value;
+    });
+    Storage.prototype.removeItem = jest.fn((key: string) => {
+      delete localStorageMock[key];
+    });
+
+    // Limpiar mocks de Date
+    jest.clearAllMocks();
+  });
+
+  it('debe retornar false cuando no hay token', () => {
+    // localStorage vacío
+    expect(isTokenActive()).toBe(false);
+  });
+
+  it('debe retornar true cuando el token es válido', () => {
+    const now = Date.now();
+    
+    // Token válido: activo y no expirado
+    const validToken = {
+      accessToken: 'valid-token',
+      notBeforeTimestampInMillis: now - 3600000, // Activo desde hace 1 hora
+      expirationTimestampInMillis: now + 3600000, // Expira en 1 hora
+    };
+
+    localStorageMock['authToken'] = JSON.stringify(validToken);
+
+    expect(isTokenActive()).toBe(true);
+  });
+
+  it('debe retornar false cuando el token ha expirado', () => {
+    const now = Date.now();
+    
+    // Token expirado
+    const expiredToken = {
+      accessToken: 'expired-token',
+      notBeforeTimestampInMillis: now - 7200000, // Activo desde hace 2 horas
+      expirationTimestampInMillis: now - 3600000, // Expiró hace 1 hora
+    };
+
+    localStorageMock['authToken'] = JSON.stringify(expiredToken);
+
+    expect(isTokenActive()).toBe(false);
+  });
+
+  it('debe retornar false cuando el token aún no está activo', () => {
+    const now = Date.now();
+    
+    // Token que será activo en el futuro
+    const futureToken = {
+      accessToken: 'future-token',
+      notBeforeTimestampInMillis: now + 3600000, // Se activa en 1 hora
+      expirationTimestampInMillis: now + 7200000, // Expira en 2 horas
+    };
+
+    localStorageMock['authToken'] = JSON.stringify(futureToken);
+
+    expect(isTokenActive()).toBe(false);
+  });
+
+  it('debe retornar true cuando el token está en el límite de expiración', () => {
+    const now = Date.now();
+    
+    // Token que expira en 1 milisegundo (edge case)
+    const aboutToExpireToken = {
+      accessToken: 'about-to-expire',
+      notBeforeTimestampInMillis: now - 3600000,
+      expirationTimestampInMillis: now + 1, // Expira en 1ms
+    };
+
+    localStorageMock['authToken'] = JSON.stringify(aboutToExpireToken);
+
+    expect(isTokenActive()).toBe(true);
+  });
+
+  it('debe retornar true cuando el token acaba de activarse', () => {
+    const now = Date.now();
+    
+    // Token recién activado (edge case)
+    const justActivatedToken = {
+      accessToken: 'just-activated',
+      notBeforeTimestampInMillis: now, // Activado justo ahora
+      expirationTimestampInMillis: now + 3600000,
+    };
+
+    localStorageMock['authToken'] = JSON.stringify(justActivatedToken);
+
+    expect(isTokenActive()).toBe(true);
+  });
+});
+```
+
+### Análisis detallado del test
+
+#### Testing de lógica temporal
+
+```typescript
+it('debe retornar false cuando el token ha expirado', () => {
+  const now = Date.now();
+  const expiredToken = {
+    expirationTimestampInMillis: now - 3600000, // Expiró hace 1 hora
+  };
+  // ...
+});
+```
+
+Para testear lógica con tiempo:
+
+- **Usamos `Date.now()`** como referencia
+- **Calculamos timestamps relativos** (now + X, now - X)
+- **Probamos casos límite**: justo antes/después de expirar
+
+#### Testing de condiciones booleanas compuestas
+
+```typescript
+return !!(
+  token &&
+  token.expirationTimestampInMillis - currentTimestamp > 0 &&
+  token.notBeforeTimestampInMillis <= currentTimestamp
+);
+```
+
+Esta función tiene 3 condiciones AND. Para testearla completamente necesitamos:
+
+1. **Token null/undefined** → false
+2. **Token expirado** → false
+3. **Token no activo aún** → false
+4. **Token válido** → true
+
+Cada test aísla una condición específica.
+
+#### Edge Cases importantes
+
+```typescript
+it('debe retornar true cuando el token está en el límite de expiración', () => {
+  // Expira en 1 segundo
+  expirationTimestampInMillis: now + 1000
+});
+```
+
+Los **edge cases** son valores límite que pueden exponer bugs:
+
+- Token que expira en 1ms
+- Token que se activa en el mismo momento
+- Token con timestamps exactamente iguales
+
+#### Cobertura completa de branches
+
+Para lograr 100% de cobertura en esta función, necesitamos tests que:
+
+- ✅ Token inexistente (`token === null`)
+- ✅ Token expirado (`expirationTimestamp <= now`)
+- ✅ Token no activo (`notBeforeTimestamp > now`)
+- ✅ Token válido (todas las condiciones cumplen)
+
+---
 
 ## Matchers Comunes de Jest
 
