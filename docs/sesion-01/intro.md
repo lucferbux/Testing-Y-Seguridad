@@ -15,14 +15,13 @@ title: "Introducción"
 Esta sesión cubre los fundamentos del testing automatizado y cómo implementar testing unitario con Jest:
 
 1. **[¿Por qué Testing?](./why-testing)** - Motivación y beneficios del testing
-2. **[Conceptos Fundamentales](./concepts)** - Pirámide de testing y tipos de tests
+2. **[Conceptos Fundamentales](./concepts)** - Anatomía de tests, AAA pattern, y principios FIRST
 3. **[Configuración de Jest](./jest-setup)** - Setup de Jest en Node.js y React
 4. **[Testing de Funciones](./functions-testing)** - Testing unitario de funciones puras
 5. **[Testing de Componentes React](./react-testing)** - Testing con React Testing Library
 6. **[Mocks y Spies](./mocks-spies)** - Simular dependencias y comportamientos
 7. **[Coverage](./coverage)** - Cobertura de código y buenas prácticas
-8. **[Ejercicio Práctico](./exercise)** - Implementación práctica de tests
-9. **[Recursos Adicionales](./recursos)** - Documentación y herramientas
+8. **[Recursos Adicionales](./recursos)** - Documentación, herramientas y preparación para la siguiente sesión
 
 ---
 

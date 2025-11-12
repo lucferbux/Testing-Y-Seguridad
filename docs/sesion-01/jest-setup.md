@@ -3,27 +3,155 @@ sidebar_position: 4
 title: "Configuración de Jest"
 ---
 
-# Jest: Configuración e Introducción
+Jest es el framework de testing más popular para JavaScript y TypeScript, especialmente en el ecosistema de React. En esta sección aprenderemos qué es Jest, por qué es tan popular, y cómo configurarlo en el proyecto **Taller-Testing-Security**, específicamente en su frontend ubicado en la carpeta `ui/`.
+
+## Contexto del Proyecto
+
+El proyecto **Taller-Testing-Security** es una aplicación web completa disponible en [GitHub](https://github.com/lucferbux/Proyecto-Testing-Y-Seguridad) que incluye:
+
+- **API Backend** en `api/`: Node.js + Express + MongoDB
+- **Frontend** en `ui/`: React + TypeScript + Vite + Styled Components
+
+En esta sesión nos enfocaremos en configurar testing para el **frontend**, que es una aplicación React moderna construida con:
+
+- **Vite**: Build tool y dev server ultra-rápido
+- **React 18**: Con hooks y functional components
+- **TypeScript**: Para type safety
+- **Styled Components**: Para estilos CSS-in-JS
+- **React Router**: Para navegación
+- **i18next**: Para internacionalización
+
+La aplicación es un portfolio personal con funcionalidades de:
+
+- Landing page pública
+- Sistema de autenticación (Login)
+- Dashboard privado con proyectos
+- Panel de administración
 
 ## ¿Qué es Jest?
 
-Jest es un framework de testing de JavaScript creado por Facebook, diseñado para:
+Jest es un **framework de testing de JavaScript** creado y mantenido por Facebook (ahora Meta). Fue diseñado originalmente para testear aplicaciones React, pero se ha expandido para ser la solución de testing estándar para todo tipo de proyectos JavaScript/TypeScript.
 
-- **Zero-config:** Funciona out-of-the-box
-- **Snapshot testing:** Para componentes React
-- **Coverage integrado:** Sin configuración adicional
-- **Mocking potente:** Sistema de mocks incluido
-- **Paralelización:** Tests en paralelo por defecto
+### Características principales
 
-## Instalación en Proyecto Docusaurus
+#### Zero-config: Funciona out-of-the-box
+
+Una de las mayores ventajas de Jest es que requiere **configuración mínima** para empezar. En muchos casos, simplemente instalas Jest y puedes comenzar a escribir tests sin configurar nada. Esto contrasta con frameworks anteriores que requerían configuración compleja con múltiples herramientas (test runner, assertion library, mocking library, etc.).
 
 ```bash
-npm install --save-dev jest @types/jest ts-jest
-npm install --save-dev @testing-library/react @testing-library/jest-dom
-npm install --save-dev @testing-library/user-event
+# Instalar Jest
+npm install --save-dev jest
+
+# Ejecutar tests - ¡ya funciona!
+npx jest
 ```
 
+Jest viene con configuraciones sensatas por defecto que funcionan para la mayoría de proyectos.
+
+#### Snapshot testing: Para componentes React
+
+Jest introdujo el concepto de **snapshot testing**, una forma de verificar que el output de tus componentes no cambie inesperadamente. Cuando ejecutas un snapshot test por primera vez, Jest guarda el output renderizado. En ejecuciones futuras, compara el output actual con el snapshot guardado y falla si hay diferencias.
+
+Esto es especialmente útil para componentes React donde quieres asegurar que cambios en el código no alteran accidentalmente la UI.
+
+```typescript
+it('renderiza correctamente', () => {
+  const tree = renderer.create(<Button label="Click me" />).toJSON();
+  expect(tree).toMatchSnapshot();
+});
+```
+
+#### Coverage integrado: Sin configuración adicional
+
+Jest incluye herramientas de **code coverage** sin necesidad de instalar nada más. Con un simple flag `--coverage`, Jest te muestra qué porcentaje de tu código está cubierto por tests.
+
+```bash
+npm test -- --coverage
+```
+
+Esto genera reportes detallados mostrando exactamente qué líneas, funciones, branches y statements están cubiertos.
+
+#### Mocking potente: Sistema de mocks incluido
+
+Jest tiene un **sistema de mocking** muy potente y fácil de usar integrado. Puedes mockear funciones, módulos completos, timers, y más sin dependencias externas.
+
+```typescript
+// Mockear función
+const mockFn = jest.fn();
+
+// Mockear módulo
+jest.mock('./api');
+
+// Mockear timers
+jest.useFakeTimers();
+```
+
+#### Paralelización: Tests en paralelo por defecto
+
+Jest ejecuta tests **en paralelo** automáticamente, aprovechando todos los cores de tu CPU. Esto hace que las suites de tests grandes se ejecuten mucho más rápido que si se ejecutaran secuencialmente.
+
+### ¿Por qué Jest es tan popular?
+
+1. **Developer Experience superior**: Jest prioriza la experiencia del desarrollador con mensajes de error claros, watch mode interactivo, y configuración simple.
+
+2. **Ecosistema de React**: Como fue creado por Facebook para React, tiene integración excelente con el ecosistema React (React Testing Library, etc.).
+
+3. **All-in-one**: No necesitas combinar múltiples librerías. Jest es test runner, assertion library, mocking framework, y más, todo en uno.
+
+4. **Comunidad grande**: Siendo tan popular, hay toneladas de recursos, plugins, y ayuda disponible.
+
+5. **Mantenimiento activo**: Meta lo usa internamente y lo mantiene activamente.
+
+## Instalación en Taller-Testing-Security
+
+Ahora vamos a configurar Jest en el proyecto **Taller-Testing-Security/ui**. Aunque Vite no incluye Jest por defecto (usa Vitest), podemos configurar Jest sin problemas siguiendo estos pasos.
+
+:::info Ubicación
+Todos los comandos siguientes se ejecutan desde la carpeta `Taller-Testing-Security/ui/`:
+
+```bash
+cd Taller-Testing-Security/ui
+```
+
+:::
+
+### Paquetes necesarios
+
+Necesitamos instalar varios paquetes para tener un entorno de testing completo compatible con Vite + React + TypeScript:
+
+```bash
+npm install --save-dev jest @types/jest ts-jest jest-environment-jsdom
+npm install --save-dev @testing-library/react @testing-library/jest-dom
+npm install --save-dev @testing-library/user-event identity-obj-proxy
+```
+
+Vamos a desglosar qué hace cada paquete:
+
+**jest**: El framework de testing principal. Es el motor que ejecuta los tests, proporciona las funciones `describe`, `it`, `expect`, etc.
+
+**@types/jest**: Definiciones de tipos TypeScript para Jest. Esto permite que tu IDE y TypeScript entiendan las funciones de Jest y proporcionen autocompletado y verificación de tipos.
+
+**ts-jest**: Un preprocessor de TypeScript para Jest. Permite que Jest entienda y ejecute archivos TypeScript (`.ts`, `.tsx`) sin necesidad de compilarlos manualmente primero.
+
+**jest-environment-jsdom**: Entorno de testing que simula un navegador. En versiones recientes de Jest, jsdom no viene incluido por defecto y debe instalarse separadamente.
+
+**@testing-library/react**: Utilidades para testear componentes React. Proporciona funciones como `render()` para renderizar componentes en tests y `screen` para query elementos.
+
+**@testing-library/jest-dom**: Matchers adicionales de Jest específicos para el DOM. Añade matchers útiles como `toBeInTheDocument()`, `toHaveClass()`, `toBeVisible()`, etc.
+
+**@testing-library/user-event**: Librería para simular interacciones de usuario de forma más realista que `fireEvent`. Por ejemplo, `userEvent.type()` simula escribir letra por letra con los eventos correctos.
+
+**identity-obj-proxy**: Mock para imports de CSS/SCSS. Retorna el nombre de la clase como string, útil cuando tus componentes importan estilos.
+
+### ¿Por qué `--save-dev`?
+
+El flag `--save-dev` instala los paquetes como **dependencias de desarrollo**. Esto significa que solo se necesitan durante el desarrollo y testing, no en producción. Cuando builds tu aplicación para producción, estas dependencias no se incluyen, manteniendo el bundle pequeño.
+
 ## Configuración: jest.config.js
+
+El archivo `jest.config.js` en la carpeta `ui/` define cómo Jest debe ejecutar tus tests. Para proyectos Vite con TypeScript y React necesitamos configuración específica.
+
+Crea el archivo `jest.config.js` en `Taller-Testing-Security/ui/`:
 
 ```javascript
 module.exports = {
@@ -33,10 +161,26 @@ module.exports = {
   // Preset para TypeScript
   preset: 'ts-jest',
   
-  // Paths de módulos
+  // Configuración de ts-jest
+  globals: {
+    'ts-jest': {
+      tsconfig: {
+        jsx: 'react',
+        esModuleInterop: true,
+      },
+    },
+  },
+  
+  // Paths de módulos - Mapear imports de Vite
   moduleNameMapper: {
-    '^@site/(.*)$': '<rootDir>/$1',
+    // CSS Modules y estilos
     '\\.(css|less|scss|sass)$': 'identity-obj-proxy',
+    
+    // Assets (imágenes, SVGs, etc.)
+    '\\.(jpg|jpeg|png|gif|svg|webp)$': '<rootDir>/__mocks__/fileMock.js',
+    
+    // Alias de Vite (si los usas en vite.config.ts)
+    '^@/(.*)$': '<rootDir>/src/$1',
   },
   
   // Archivos de setup
@@ -55,15 +199,74 @@ module.exports = {
   collectCoverageFrom: [
     'src/**/*.{ts,tsx}',
     '!src/**/*.d.ts',
-    '!src/**/*.stories.tsx',
+    '!src/main.tsx',           // Entry point
+    '!src/vite-env.d.ts',      // Vite types
+    '!src/**/*.stories.tsx',   // Storybook (si lo tienes)
   ],
   
   // Ignorar
-  testPathIgnorePatterns: ['/node_modules/', '/.docusaurus/'],
+  testPathIgnorePatterns: ['/node_modules/', '/dist/', '/build/'],
+  
+  // Transformaciones
+  transform: {
+    '^.+\\.tsx?$': 'ts-jest',
+  },
 };
 ```
 
+### Explicación de cada opción
+
+**`testEnvironment: 'jsdom'`**
+
+Define el **entorno de ejecución** de los tests. Para React necesitamos `'jsdom'` que simula un navegador usando jsdom, una implementación en JavaScript del DOM. Esto es esencial para testear componentes React que renderizan elementos HTML y usan APIs del navegador como `localStorage`, `window`, etc.
+
+**`preset: 'ts-jest'`**
+
+Configura Jest para usar el preset de **ts-jest**, que permite ejecutar archivos TypeScript directamente. Sin esto, Jest no entendería sintaxis de TypeScript y fallaría al intentar ejecutar archivos `.ts` o `.tsx`.
+
+**`globals: { 'ts-jest': ... }`**
+
+Configuración específica de ts-jest:
+
+- `jsx: 'react'`: Indica cómo procesar JSX (React 17+ usa automatic, pero para compatibilidad usamos 'react')
+- `esModuleInterop: true`: Permite imports de CommonJS como `import React from 'react'`
+
+**`moduleNameMapper`**
+
+Este objeto mapea **import paths** a archivos reales o mocks. Es crucial para proyectos Vite:
+
+- `'\\.(css|less|scss|sass)$': 'identity-obj-proxy'`: Mockea imports de estilos. Como Taller-Testing-Security usa Styled Components (CSS-in-JS), esto aplica principalmente si tienes imports de CSS regulares.
+
+- `'\\.(jpg|jpeg|png|gif|svg|webp)$': '<rootDir>/__mocks__/fileMock.js'`: Mockea imports de assets. Vite permite importar imágenes como módulos, pero Jest necesita mockearlas.
+
+- `'^@/(.*)$': '<rootDir>/src/$1'`: Alias para imports más limpios (si configuras `@` en vite.config.ts).
+
+**`setupFilesAfterEnv: ['<rootDir>/jest.setup.js']`**
+
+Especifica archivos que se ejecutan **una vez después de configurar el entorno de testing** pero antes de ejecutar los tests. Es ideal para importar `@testing-library/jest-dom` y otras configuraciones globales.
+
+**`collectCoverageFrom`**
+
+Define qué archivos incluir al calcular **code coverage**:
+
+- `'src/**/*.{ts,tsx}'`: Incluye todos los archivos TypeScript en `src`
+- `'!src/**/*.d.ts'`: Excluye archivos de definiciones de tipos
+- `'!src/main.tsx'`: Excluye el entry point de Vite
+- `'!src/vite-env.d.ts'`: Excluye tipos de Vite
+
+**`testPathIgnorePatterns`**
+
+Patrones de paths que Jest debe **ignorar completamente**:
+
+- `'/node_modules/'`: No ejecutar tests dentro de dependencias
+- `'/dist/'`: Ignorar archivos build de Vite
+- `'/build/'`: Otro posible directorio de output
+
 ## Setup: jest.setup.js
+
+El archivo `jest.setup.js` se ejecuta una vez antes de todos los tests y es el lugar ideal para configuración global.
+
+Crea el archivo `jest.setup.js` en `Taller-Testing-Security/ui/`:
 
 ```javascript
 import '@testing-library/jest-dom';
@@ -74,13 +277,180 @@ global.console = {
   error: jest.fn(), // Silenciar errores en tests
   warn: jest.fn(),  // Silenciar warnings en tests
 };
+
+// Mock de window.matchMedia (usado por algunos componentes)
+Object.defineProperty(window, 'matchMedia', {
+  writable: true,
+  value: jest.fn().mockImplementation(query => ({
+    matches: false,
+    media: query,
+    onchange: null,
+    addListener: jest.fn(),
+    removeListener: jest.fn(),
+    addEventListener: jest.fn(),
+    removeEventListener: jest.fn(),
+    dispatchEvent: jest.fn(),
+  })),
+});
+
+// Mock de import.meta.env (variables de entorno de Vite)
+global.import = {
+  meta: {
+    env: {
+      VITE_API_URI: 'http://localhost:3000/api',
+      VITE_BASE_URI: 'http://localhost:5173',
+    },
+  },
+};
+```
+
+### ¿Qué hace este setup?
+
+**`import '@testing-library/jest-dom'`**
+
+Esta línea importa los **custom matchers** de `@testing-library/jest-dom`. Estos matchers extienden las capacidades de Jest con aserciones específicas para el DOM que hacen los tests más expresivos y legibles.
+
+Sin este import, solo tendrías matchers básicos de Jest. Con él, obtienes matchers como:
+
+```typescript
+// Sin jest-dom
+expect(element.getAttribute('class')).toContain('active');
+
+// Con jest-dom (más legible)
+expect(element).toHaveClass('active');
+```
+
+Otros matchers útiles:
+
+- `toBeInTheDocument()`: Verifica que un elemento existe en el DOM
+- `toBeVisible()`: Verifica que un elemento es visible
+- `toBeDisabled()`: Verifica que un input/button está deshabilitado
+- `toHaveTextContent()`: Verifica el texto de un elemento
+- `toHaveAttribute()`: Verifica atributos HTML
+
+### Silenciar consola en tests
+
+```javascript
+global.console = {
+  ...console,
+  error: jest.fn(),
+  warn: jest.fn(),
+};
+```
+
+Esta configuración **mockea** `console.error` y `console.warn` para que no ensucien el output de los tests. En desarrollo, warnings y errors de React pueden ser útiles, pero en tests suelen ser ruido que dificulta leer los resultados.
+
+Si necesitas ver estos mensajes durante desarrollo de tests, puedes comentar estas líneas temporalmente.
+
+### Mock de window.matchMedia
+
+```javascript
+Object.defineProperty(window, 'matchMedia', {
+  writable: true,
+  value: jest.fn().mockImplementation(...)
+});
+```
+
+`window.matchMedia` es una API del navegador para media queries CSS. No existe en jsdom por defecto, pero algunos componentes pueden usarla (por ejemplo, para detectar dark mode o responsive breakpoints).
+
+Este mock proporciona una implementación básica que previene errores cuando componentes usan `matchMedia`.
+
+### Mock de import.meta.env
+
+```javascript
+global.import = {
+  meta: {
+    env: {
+      VITE_API_URI: 'http://localhost:3000/api',
+      VITE_BASE_URI: 'http://localhost:5173',
+    },
+  },
+};
+```
+
+Vite usa `import.meta.env` para acceder a variables de entorno (definidas en `.env`). En el proyecto Taller-Testing-Security, archivos como `src/utils/config.ts` usan estas variables:
+
+```typescript
+// src/utils/config.ts
+const baseUrl = import.meta.env.VITE_BASE_URI;
+let apiBaseUrl = import.meta.env.VITE_API_URI;
+
+if (baseUrl) {
+  apiBaseUrl = baseUrl + '/_/api';
+}
+
+export const API_BASE_URI = apiBaseUrl;
+```
+
+El mock asegura que estos valores estén disponibles en tests, evitando errores de `undefined`.
+
+:::warning Precaución
+Los valores mockeados deben coincidir con tu entorno de desarrollo. Ajústalos si tus puertos o URLs son diferentes.
+:::
+
+## Mock de Assets: `__mocks__/fileMock.js`
+
+Para manejar imports de imágenes y otros assets, necesitamos un mock simple.
+
+Crea el archivo `__mocks__/fileMock.js` en `Taller-Testing-Security/ui/`:
+
+```javascript
+module.exports = 'test-file-stub';
+```
+
+Este archivo es referenciado en `jest.config.js` para mockear imports de imágenes:
+
+```javascript
+// Cuando un componente hace:
+import logo from './logo.png';
+
+// Jest lo reemplaza con:
+const logo = 'test-file-stub';
+```
+
+Esto es suficiente para la mayoría de tests donde solo necesitas verificar que la imagen se renderiza, sin importar su contenido real.
+
+### Ejemplo de uso en componente
+
+El componente `Loader.tsx` del proyecto importa un SVG:
+
+```typescript
+// src/components/elements/Loader.tsx
+import icnLoader from './loader.svg';
+
+const Loader = ({ message }: LoaderProps) => (
+  <LoaderWrapper>
+    <LoaderCard>
+      <LoaderImg src={icnLoader} alt={message} />
+      <LoaderMsg>{message}</LoaderMsg>
+    </LoaderCard>
+  </LoaderWrapper>
+);
+```
+
+En tests, `icnLoader` será `'test-file-stub'`:
+
+```typescript
+// Loader.test.tsx
+it('renderiza con la imagen correcta', () => {
+  render(<Loader message="Cargando..." />);
+  const img = screen.getByAltText('Cargando...');
+  expect(img).toHaveAttribute('src', 'test-file-stub');
+});
 ```
 
 ## Scripts en package.json
 
+Para facilitar la ejecución de tests, agrega estos scripts a tu `package.json` en `Taller-Testing-Security/ui/`:
+
 ```json
 {
   "scripts": {
+    "dev": "vite",
+    "build": "tsc && vite build",
+    "preview": "vite preview",
+    "lint": "eslint src",
+    "lint:fix": "eslint src --fix",
     "test": "jest",
     "test:watch": "jest --watch",
     "test:coverage": "jest --coverage",
@@ -88,3 +458,183 @@ global.console = {
   }
 }
 ```
+
+### Explicación de cada script
+
+**`"test": "jest"`**
+
+Ejecuta **todos los tests** una vez y termina. Este es el comando que normalmente se ejecuta en CI/CD.
+
+```bash
+npm test
+```
+
+Output esperado:
+
+```text
+PASS  src/utils/__tests__/auth.test.ts
+PASS  src/components/elements/__tests__/Loader.test.tsx
+PASS  src/components/cards/__tests__/ProjectCard.test.tsx
+
+Test Suites: 3 passed, 3 total
+Tests:       12 passed, 12 total
+Snapshots:   0 total
+Time:        2.856 s
+```
+
+**`"test:watch": "jest --watch"`**
+
+Ejecuta Jest en **modo watch**: los tests se re-ejecutan automáticamente cuando guardas cambios en archivos. Es el modo ideal para desarrollo porque obtienes feedback instantáneo.
+
+```bash
+npm run test:watch
+```
+
+Features del watch mode:
+
+- Re-ejecuta solo tests relacionados con archivos cambiados
+- Menu interactivo para filtrar tests
+- Actualización automática
+- Modo focused con `f` para ejecutar solo tests que fallaron
+
+**`"test:coverage": "jest --coverage"`**
+
+Ejecuta tests y genera un **reporte de cobertura de código** mostrando qué porcentaje de tu código está cubierto por tests.
+
+```bash
+npm run test:coverage
+```
+
+Genera un reporte como:
+
+```text
+--------------------------|---------|----------|---------|---------|
+File                      | % Stmts | % Branch | % Funcs | % Lines |
+--------------------------|---------|----------|---------|---------|
+All files                 |   82.35 |    78.95 |   85.71 |   82.35 |
+ src/utils                |   88.89 |    85.71 |   90.00 |   88.89 |
+  auth.ts                 |   92.31 |    87.50 |   100   |   92.31 |
+  config.ts               |   100   |    100   |   100   |   100   |
+ src/components/elements  |   75.00 |    66.67 |   80.00 |   75.00 |
+  Loader.tsx              |   75.00 |    66.67 |   80.00 |   75.00 |
+ src/components/cards     |   78.57 |    71.43 |   83.33 |   78.57 |
+  ProjectCard.tsx         |   78.57 |    71.43 |   83.33 |   78.57 |
+--------------------------|---------|----------|---------|---------|
+```
+
+También genera un reporte HTML en `coverage/lcov-report/index.html` que puedes abrir en el navegador para ver visualmente qué líneas están cubiertas.
+
+**`"test:verbose": "jest --verbose"`**
+
+Ejecuta tests con **output detallado**, mostrando cada test individual incluso si pasa.
+
+```bash
+npm run test:verbose
+```
+
+Útil para debugging o cuando quieres ver exactamente qué tests están corriendo.
+
+### Flags adicionales útiles
+
+Puedes combinar flags para personalizar la ejecución:
+
+```bash
+# Ejecutar solo tests que matchean un patrón (por ejemplo, solo tests de Loader)
+npm test -- Loader
+
+# Ejecutar solo tests en una carpeta específica
+npm test -- src/utils
+
+# Actualizar snapshots
+npm test -- -u
+
+# Ejecutar con coverage y actualizar snapshots
+npm run test:coverage -- -u
+
+# Modo watch con coverage
+npm run test:watch -- --coverage
+```
+
+:::tip Consejo
+Durante desarrollo, usa `npm run test:watch` para feedback instantáneo. Antes de hacer commit, ejecuta `npm run test:coverage` para verificar cobertura.
+:::
+
+## Verificación de la Configuración
+
+Para verificar que todo está configurado correctamente, vamos a crear un test simple.
+
+Crea el archivo `src/utils/__tests__/config.test.ts`:
+
+```typescript
+import { API_BASE_URI } from '../config';
+
+describe('config', () => {
+  it('debe exportar API_BASE_URI', () => {
+    expect(API_BASE_URI).toBeDefined();
+    expect(typeof API_BASE_URI).toBe('string');
+  });
+
+  it('debe usar la URL mockeada en tests', () => {
+    // En jest.setup.js mockeamos VITE_API_URI como 'http://localhost:3000/api'
+    expect(API_BASE_URI).toBe('http://localhost:3000/api');
+  });
+});
+```
+
+Ejecuta el test:
+
+```bash
+cd Taller-Testing-Security/ui
+npm test
+```
+
+Si todo está configurado correctamente, deberías ver:
+
+```text
+PASS  src/utils/__tests__/config.test.ts
+  config
+    ✓ debe exportar API_BASE_URI (2 ms)
+    ✓ debe usar la URL mockeada en tests (1 ms)
+
+Test Suites: 1 passed, 1 total
+Tests:       2 passed, 2 total
+Snapshots:   0 total
+Time:        1.234 s
+```
+
+¡Configuración completa! 🎉
+
+## Resumen de Archivos Creados
+
+Después de seguir esta guía, deberías tener estos nuevos archivos en `Taller-Testing-Security/ui/`:
+
+```text
+Taller-Testing-Security/ui/
+├── jest.config.js                    # Configuración de Jest
+├── jest.setup.js                     # Setup global de tests
+├── __mocks__/
+│   └── fileMock.js                  # Mock para assets (imágenes, SVGs)
+├── src/
+│   └── utils/
+│       └── __tests__/
+│           └── config.test.ts       # Test de verificación
+└── package.json                      # Scripts de testing añadidos
+```
+
+Y estas modificaciones:
+
+- **package.json**: Scripts de testing (`test`, `test:watch`, `test:coverage`, `test:verbose`)
+- **node_modules**: Paquetes de Jest y Testing Library instalados
+
+## Próximos Pasos
+
+Ahora que tienes Jest configurado, en las siguientes secciones aprenderás a:
+
+1. **[Testing de Funciones](./functions-testing)**: Testear funciones puras del proyecto como las de `src/utils/auth.ts`
+2. **[Testing de Componentes React](./react-testing)**: Testear componentes como `Loader.tsx` y `ProjectCard.tsx`
+3. **[Mocks y Spies](./mocks-spies)**: Mockear APIs y dependencias externas
+4. **[Coverage](./coverage)**: Analizar y mejorar la cobertura de código
+
+:::info Nota
+En las próximas secciones todos los ejemplos usarán archivos reales del proyecto Taller-Testing-Security, como `auth.ts`, `Loader.tsx`, y `ProjectCard.tsx`.
+:::
