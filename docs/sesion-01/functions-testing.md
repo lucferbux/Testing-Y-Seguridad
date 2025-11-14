@@ -270,225 +270,6 @@ expect(API_BASE_URI).toMatch(/^https?:\/\//);
 
 El matcher `toMatch()` acepta expresiones regulares, permitiendo validar formatos complejos como URLs.
 
-## Ejemplo 2: Testing con localStorage
-
-Las funciones de validación son extremadamente comunes en aplicaciones web. Validar datos de usuario es crucial para la seguridad y la experiencia de usuario. Veamos cómo testear validadores de forma exhaustiva.
-
-## Ejemplo 2: Funciones con Efectos Secundarios (localStorage)
-
-Las funciones que interactúan con el navegador (localStorage, sessionStorage, cookies) son más complejas de testear porque dependen de APIs que no existen en el entorno de testing de Node.js. Necesitamos **mockearlas**.
-
-### Código: src/utils/auth.ts (setAuthToken y removeAuthToken)
-
-```typescript
-import jwt_decode from 'jwt-decode';
-import { tokenKey } from '../constants/config';
-
-interface Token {
-  accessToken: string;
-  notBeforeTimestampInMillis: number;
-  expirationTimestampInMillis: number;
-}
-
-interface JWTPayload {
-  _id: string;
-  email: string;
-  iat: number;
-  exp: number;
-}
-
-export function setAuthToken(accessToken: string) {
-  const tokenPayload = jwt_decode<JWTPayload>(accessToken);
-  const token: Token = {
-    accessToken: accessToken,
-    notBeforeTimestampInMillis: tokenPayload.iat * 1000,
-    expirationTimestampInMillis: tokenPayload.exp * 1000
-  };
-  localStorage.setItem(tokenKey, JSON.stringify(token));
-}
-
-export function removeAuthToken() {
-  localStorage.removeItem(tokenKey);
-}
-```
-
-Estas funciones:
-
-- **setAuthToken**: Decodifica un JWT y lo guarda en localStorage
-- **removeAuthToken**: Elimina el token de localStorage
-
-El desafío es que `localStorage` no existe en Jest/Node.js, así que debemos mockearlo.
-
-### Test: `src/utils/__tests__/auth.test.ts`
-
-```typescript
-import { setAuthToken, removeAuthToken } from '../auth';
-
-// Mock de jwt-decode
-jest.mock('jwt-decode', () => ({
-  __esModule: true,
-  default: jest.fn((token: string) => ({
-    _id: 'user123',
-    email: 'test@example.com',
-    iat: Math.floor(Date.now() / 1000),
-    exp: Math.floor(Date.now() / 1000) + 3600, // Expira en 1 hora
-  })),
-}));
-
-describe('auth utils - localStorage', () => {
-  // Mock de localStorage
-  let localStorageMock: { [key: string]: string };
-
-  beforeEach(() => {
-    // Crear un objeto para simular localStorage
-    localStorageMock = {};
-
-    // Mockear métodos de localStorage
-    Storage.prototype.getItem = jest.fn((key: string) => localStorageMock[key] || null);
-    Storage.prototype.setItem = jest.fn((key: string, value: string) => {
-      localStorageMock[key] = value;
-    });
-    Storage.prototype.removeItem = jest.fn((key: string) => {
-      delete localStorageMock[key];
-    });
-    Storage.prototype.clear = jest.fn(() => {
-      localStorageMock = {};
-    });
-  });
-
-  afterEach(() => {
-    // Limpiar mocks después de cada test
-    jest.clearAllMocks();
-  });
-
-  describe('setAuthToken', () => {
-    it('debe guardar el token en localStorage', () => {
-      const mockToken = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.test.token';
-      
-      setAuthToken(mockToken);
-
-      // Verificar que setItem fue llamado
-      expect(localStorage.setItem).toHaveBeenCalledTimes(1);
-      expect(localStorage.setItem).toHaveBeenCalledWith(
-        'authToken',
-        expect.any(String)
-      );
-    });
-
-    it('debe almacenar un objeto Token con estructura correcta', () => {
-      const mockToken = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.test.token';
-      
-      setAuthToken(mockToken);
-
-      // Obtener el valor guardado
-      const savedValue = localStorageMock['authToken'];
-      const parsedToken = JSON.parse(savedValue);
-
-      // Verificar estructura del token
-      expect(parsedToken).toHaveProperty('accessToken', mockToken);
-      expect(parsedToken).toHaveProperty('notBeforeTimestampInMillis');
-      expect(parsedToken).toHaveProperty('expirationTimestampInMillis');
-      expect(typeof parsedToken.notBeforeTimestampInMillis).toBe('number');
-      expect(typeof parsedToken.expirationTimestampInMillis).toBe('number');
-    });
-
-    it('debe convertir timestamps de segundos a milisegundos', () => {
-      const mockToken = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.test.token';
-      
-      setAuthToken(mockToken);
-
-      const savedValue = localStorageMock['authToken'];
-      const parsedToken = JSON.parse(savedValue);
-
-      // JWT usa timestamps en segundos, debemos convertir a milisegundos
-      // Verificar que el número es razonable (timestamp en milisegundos es mucho mayor)
-      expect(parsedToken.notBeforeTimestampInMillis).toBeGreaterThan(1000000000000);
-      expect(parsedToken.expirationTimestampInMillis).toBeGreaterThan(1000000000000);
-    });
-  });
-
-  describe('removeAuthToken', () => {
-    it('debe eliminar el token de localStorage', () => {
-      // Primero guardamos un token
-      localStorageMock['authToken'] = JSON.stringify({
-        accessToken: 'some-token',
-        notBeforeTimestampInMillis: Date.now(),
-        expirationTimestampInMillis: Date.now() + 3600000,
-      });
-
-      // Luego lo removemos
-      removeAuthToken();
-
-      // Verificar que removeItem fue llamado
-      expect(localStorage.removeItem).toHaveBeenCalledWith('authToken');
-      expect(localStorageMock['authToken']).toBeUndefined();
-    });
-
-    it('debe ser seguro llamar removeAuthToken sin token existente', () => {
-      // No hay token guardado
-      expect(localStorageMock['authToken']).toBeUndefined();
-
-      // No debe lanzar error
-      expect(() => removeAuthToken()).not.toThrow();
-      
-      expect(localStorage.removeItem).toHaveBeenCalledWith('authToken');
-    });
-  });
-});
-```
-
-### Análisis detallado del test
-
-#### Setup del mock de localStorage
-
-```typescript
-beforeEach(() => {
-  localStorageMock = {};
-  Storage.prototype.setItem = jest.fn((key, value) => {
-    localStorageMock[key] = value;
-  });
-  // ...
-});
-```
-
-Creamos un mock completo de localStorage:
-
-- **Objeto `localStorageMock`**: Simula el almacenamiento real
-- **Mock functions**: `setItem`, `getItem`, `removeItem` son jest.fn() que también actualizan el objeto
-- **beforeEach**: Resetea el estado antes de cada test para aislamiento
-
-#### Verificación de llamadas a mocks
-
-```typescript
-expect(localStorage.setItem).toHaveBeenCalledTimes(1);
-expect(localStorage.setItem).toHaveBeenCalledWith('authToken', expect.any(String));
-```
-
-Con `jest.fn()` podemos verificar:
-
-- **Cuántas veces** se llamó la función
-- **Con qué argumentos** se llamó
-- El **orden** de las llamadas
-
-#### expect.any(String)
-
-```typescript
-expect(localStorage.setItem).toHaveBeenCalledWith('authToken', expect.any(String));
-```
-
-`expect.any(Type)` es útil cuando no nos importa el valor exacto, solo el tipo. En este caso, sabemos que el segundo argumento debe ser un string (JSON), pero no nos importa el valor exacto.
-
-#### Testing de transformaciones de datos
-
-```typescript
-it('debe convertir timestamps de segundos a milisegundos', () => {
-  // JWT usa segundos, JavaScript usa milisegundos
-  expect(parsedToken.notBeforeTimestampInMillis).toBeGreaterThan(1000000000000);
-});
-```
-
-Este test verifica que la conversión de unidades (segundos → milisegundos) se hace correctamente. Es un caso edge que es fácil de romper si alguien modifica el código.
-
 ## Ejemplo 3: Testing de Validación de Tokens
 
 En este ejemplo vamos a testear la función `isTokenActive()` del archivo `src/utils/auth.ts`, que verifica si un token JWT es válido comprobando sus timestamps de expiración y activación.
@@ -519,22 +300,14 @@ Esta función:
 ### Test: src/utils/\__tests__/auth-validation.test.ts
 
 ```typescript
-import { isTokenActive } from '../auth';
-
-// Mock de jwt-decode
-jest.mock('jwt-decode', () => {
-  return jest.fn(() => ({
-    _id: '123',
-    email: 'test@example.com',
-    iat: Math.floor(Date.now() / 1000) - 3600, // Emitido hace 1 hora
-    exp: Math.floor(Date.now() / 1000) + 3600, // Expira en 1 hora
-  }));
-});
-
 describe('isTokenActive', () => {
   let localStorageMock: { [key: string]: string };
+  const FIXED_TIME = 1609459200000; // 2021-01-01 00:00:00 UTC (milisegundos)
 
   beforeEach(() => {
+    // Limpiar mocks primero
+    jest.clearAllMocks();
+    
     // Mock completo de localStorage
     localStorageMock = {};
     
@@ -546,8 +319,13 @@ describe('isTokenActive', () => {
       delete localStorageMock[key];
     });
 
-    // Limpiar mocks de Date
-    jest.clearAllMocks();
+    // Mockear Date.now() DESPUÉS de clearAllMocks para evitar condiciones de carrera
+    jest.spyOn(Date, 'now').mockReturnValue(FIXED_TIME);
+  });
+
+  afterEach(() => {
+    // Restaurar Date.now()
+    jest.restoreAllMocks();
   });
 
   it('debe retornar false cuando no hay token', () => {
@@ -556,76 +334,66 @@ describe('isTokenActive', () => {
   });
 
   it('debe retornar true cuando el token es válido', () => {
-    const now = Date.now();
-    
     // Token válido: activo y no expirado
     const validToken = {
       accessToken: 'valid-token',
-      notBeforeTimestampInMillis: now - 3600000, // Activo desde hace 1 hora
-      expirationTimestampInMillis: now + 3600000, // Expira en 1 hora
+      notBeforeTimestampInMillis: FIXED_TIME - 3600000, // Activo desde hace 1 hora
+      expirationTimestampInMillis: FIXED_TIME + 3600000, // Expira en 1 hora
     };
 
-    localStorageMock['authToken'] = JSON.stringify(validToken);
+    localStorageMock[tokenKey] = JSON.stringify(validToken);
 
     expect(isTokenActive()).toBe(true);
   });
 
   it('debe retornar false cuando el token ha expirado', () => {
-    const now = Date.now();
-    
     // Token expirado
     const expiredToken = {
       accessToken: 'expired-token',
-      notBeforeTimestampInMillis: now - 7200000, // Activo desde hace 2 horas
-      expirationTimestampInMillis: now - 3600000, // Expiró hace 1 hora
+      notBeforeTimestampInMillis: FIXED_TIME - 7200000, // Activo desde hace 2 horas
+      expirationTimestampInMillis: FIXED_TIME - 3600000, // Expiró hace 1 hora
     };
 
-    localStorageMock['authToken'] = JSON.stringify(expiredToken);
+    localStorageMock[tokenKey] = JSON.stringify(expiredToken);
 
     expect(isTokenActive()).toBe(false);
   });
 
   it('debe retornar false cuando el token aún no está activo', () => {
-    const now = Date.now();
-    
     // Token que será activo en el futuro
     const futureToken = {
       accessToken: 'future-token',
-      notBeforeTimestampInMillis: now + 3600000, // Se activa en 1 hora
-      expirationTimestampInMillis: now + 7200000, // Expira en 2 horas
+      notBeforeTimestampInMillis: FIXED_TIME + 3600000, // Se activa en 1 hora
+      expirationTimestampInMillis: FIXED_TIME + 7200000, // Expira en 2 horas
     };
 
-    localStorageMock['authToken'] = JSON.stringify(futureToken);
+    localStorageMock[tokenKey] = JSON.stringify(futureToken);
 
     expect(isTokenActive()).toBe(false);
   });
 
   it('debe retornar true cuando el token está en el límite de expiración', () => {
-    const now = Date.now();
-    
     // Token que expira en 1 milisegundo (edge case)
     const aboutToExpireToken = {
       accessToken: 'about-to-expire',
-      notBeforeTimestampInMillis: now - 3600000,
-      expirationTimestampInMillis: now + 1, // Expira en 1ms
+      notBeforeTimestampInMillis: FIXED_TIME - 3600000,
+      expirationTimestampInMillis: FIXED_TIME + 1, // Expira en 1ms
     };
 
-    localStorageMock['authToken'] = JSON.stringify(aboutToExpireToken);
+    localStorageMock[tokenKey] = JSON.stringify(aboutToExpireToken);
 
     expect(isTokenActive()).toBe(true);
   });
 
   it('debe retornar true cuando el token acaba de activarse', () => {
-    const now = Date.now();
-    
     // Token recién activado (edge case)
     const justActivatedToken = {
       accessToken: 'just-activated',
-      notBeforeTimestampInMillis: now, // Activado justo ahora
-      expirationTimestampInMillis: now + 3600000,
+      notBeforeTimestampInMillis: FIXED_TIME, // Activado justo ahora
+      expirationTimestampInMillis: FIXED_TIME + 3600000,
     };
 
-    localStorageMock['authToken'] = JSON.stringify(justActivatedToken);
+    localStorageMock[tokenKey] = JSON.stringify(justActivatedToken);
 
     expect(isTokenActive()).toBe(true);
   });
