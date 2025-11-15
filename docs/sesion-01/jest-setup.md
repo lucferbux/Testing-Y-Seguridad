@@ -637,15 +637,6 @@ npm run test:watch -- --coverage
 Durante desarrollo, usa `npm run test:watch` para feedback instantáneo. Antes de hacer commit, ejecuta `npm run test:coverage` para verificar cobertura.
 :::
 
-## Verificación de la Configuración
-
-Para verificar que todo está configurado correctamente, vamos a crear un test simple.
-
-Crea el archivo `src/utils/__tests__/config.test.ts`:
-
-```typescript
-import { API_BASE_URI } from '../config';
-
 ## Primer Test de Verificación: config.ts
 
 Ahora que tienes Jest configurado, vamos a crear un primer test simple para verificar que todo funciona correctamente.
