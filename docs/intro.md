@@ -30,6 +30,33 @@ Este módulo se divide en **4 sesiones** de 1.5 horas cada una:
 - Mocks y Spies
 - Cobertura de código
 
+### [Sesión 2: Testing de Integración](./sesion-02/intro)
+- Diferencias entre testing unitario e integración
+- Testing de APIs con Supertest
+- Testing de bases de datos con MongoDB Memory Server
+- Testing de componentes React con dependencias
+- Mocking de APIs con MSW (Mock Service Worker)
+- Estrategias de testing en aplicaciones full stack
+
+### [Sesión 3: Testing End-to-End con Cypress](./sesion-03/intro)
+- Introducción al testing E2E
+- Configuración de Cypress
+- Selectores y comandos básicos
+- Testing de flujos de usuario completos
+- Interceptación de requests (cy.intercept)
+- Best practices y debugging
+- Integración con CI/CD
+
+### [Sesión 4: Seguridad en Aplicaciones Web](./sesion-04/intro)
+- OWASP Top 10 2021
+- Vulnerabilidades comunes: XSS, CSRF, Injection
+- Headers de seguridad con Helmet.js
+- Rate limiting y protección contra fuerza bruta
+- Validación y sanitización de inputs
+- Gestión segura de secretos
+- Auditoría de dependencias con npm audit
+- Testing de seguridad
+
 
 ## 🏗️ Enfoque del Módulo
 

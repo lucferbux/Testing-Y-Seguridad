@@ -374,5 +374,5 @@ Antes de avanzar, asegúrate de poder:
 **Continúa practicando** con el [ejercicio integrador](./exercise) y explora los recursos adicionales para profundizar tus conocimientos.
 
 :::tip Siguiente Paso
-Avanza a la **[Sesión 4: Seguridad](../../sesion-04/intro)** para aprender sobre desarrollo seguro y protección contra vulnerabilidades comunes.
+Avanza a la **[Sesión 4: Seguridad](../sesion-04/intro)** para aprender sobre desarrollo seguro y protección contra vulnerabilidades comunes.
 :::
