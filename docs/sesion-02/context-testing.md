@@ -63,309 +63,582 @@ En tests de integración con Context, verificamos:
 | **Múltiples consumidores** | Varios componentes comparten el mismo estado | Detecta problemas de sincronización |
 | **Manejo de errores** | El componente falla gracefully si no hay Provider | Previene crashes inesperados |
 
-## Ejemplo Práctico: Theme Context
+## Análisis del Proyecto: Context en Taller-Testing-Security
 
-Vamos a construir un sistema de temas (light/dark) completo para entender cómo testar Context desde cero. Este es un caso de uso muy común en aplicaciones reales: necesitamos que múltiples componentes accedan al tema actual y puedan cambiarlo globalmente.
+El proyecto utiliza **dos Context principales** para gestionar estado global:
 
-### Anatomía del ThemeContext
+| Context | Propósito | Estado gestionado | Acciones |
+|---------|-----------|-------------------|----------|
+| **AuthContext** | Autenticación de usuarios | `user: User \| undefined`<br/>`isLoading: boolean` | `login()`, `logout()`, `loadUser()` |
+| **ProjectContext** | Gestión del proyecto actual | `project: Project \| undefined` | `addProject()`, `removeProject()` |
 
-Nuestro Context necesita proporcionar dos cosas:
-1. **Estado actual** (`theme: 'light' | 'dark'`) - Para que los componentes sepan qué tema mostrar
-2. **Función para cambiar** (`toggleTheme`) - Para que los componentes puedan modificar el tema
+### 1. AuthContext - Autenticación con JWT
 
-### Código: src/context/ThemeContext.tsx
+Este Context maneja **todo el ciclo de vida de autenticación**:
+- Login con username/password
+- Almacenamiento del token JWT
+- Carga automática del usuario desde el token
+- Logout y limpieza de sesión
+- Validación de tokens expirados
+
+#### Código: ui/src/context/AuthContext.tsx
 
 ```tsx
-import React, { createContext, useContext, useState, ReactNode } from 'react';
+import { createContext, ReactNode, useCallback, useEffect, useState } from 'react';
+import createApiClient from '../api/api-client-factory';
+import { User } from '../model/user';
+import {
+  getCurrentUser,
+  isTokenActive,
+  setLogoutIfExpiredHandler,
+  logout as logoutService,
+  setAuthToken
+} from '../utils/auth';
 
-// 1. Definimos los tipos - TypeScript nos ayuda a prevenir errores
-type Theme = 'light' | 'dark';
+type AuthContextType = {
+  user: User | undefined;
+  isLoading: boolean;
+  login: (username: string, password: string) => Promise<void>;
+  logout: () => Promise<void>;
+  loadUser: () => void;
+};
 
-interface ThemeContextType {
-  theme: Theme;           // Estado actual
-  toggleTheme: () => void; // Función para cambiar
+const AuthContext = createContext<AuthContextType>({
+  user: undefined,
+  isLoading: false,
+  login: () => Promise.resolve(),
+  logout: () => Promise.resolve(),
+  loadUser: () => {}
+});
+
+interface Props {
+  children: ReactNode;
 }
 
-// 2. Creamos el Context con valor por defecto undefined
-// Esto nos permite detectar si alguien usa useTheme sin Provider
-const ThemeContext = createContext<ThemeContextType | undefined>(undefined);
+export function AuthProvider({ children }: Props) {
+  const [user, setUser] = useState<User | undefined>(getCurrentUser());
+  const [isLoading, setIsLoading] = useState<boolean>(false);
 
-// 3. Componente Provider - Gestiona el estado y lo provee a los hijos
-export function ThemeProvider({ children }: { children: ReactNode }) {
-  // Estado interno: comienza con 'light'
-  const [theme, setTheme] = useState<Theme>('light');
+  const loadUser = useCallback(() => {
+    const currentUser = getCurrentUser();
+    setUser(currentUser);
+  }, []);
 
-  // Función que alterna entre light y dark
-  const toggleTheme = () => {
-    setTheme(prev => prev === 'light' ? 'dark' : 'light');
-  };
+  // Al montar, verificamos si hay un token válido
+  useEffect(() => {
+    if (isTokenActive()) {
+      setLogoutIfExpiredHandler(setUser);
+      loadUser();
+    } else {
+      logoutService();
+      setUser(undefined);
+    }
+  }, [loadUser]);
 
-  // Proveemos el valor a todos los descendientes
+  const login = useCallback(
+    async (username: string, password: string) => {
+      const api = createApiClient();
+      setIsLoading(true);
+      try {
+        const result = await api.token(username, password);
+        setAuthToken(result.token);
+        setLogoutIfExpiredHandler(setUser);
+        loadUser();
+      } catch (apiError) {
+        throw new Error();
+      } finally {
+        setIsLoading(false);
+      }
+    },
+    [setUser, loadUser]
+  );
+
+  const logout = useCallback(async () => {
+    logoutService();
+    setUser(undefined);
+  }, []);
+
   return (
-    <ThemeContext.Provider value={{ theme, toggleTheme }}>
+    <AuthContext.Provider value={{ user, isLoading, login, logout, loadUser }}>
       {children}
-    </ThemeContext.Provider>
+    </AuthContext.Provider>
   );
 }
 
-// 4. Custom Hook - Facilita el consumo y añade validación
-export function useTheme() {
-  const context = useContext(ThemeContext);
-  
-  // Si context es undefined, significa que useTheme se llamó fuera del Provider
-  if (!context) {
-    throw new Error('useTheme must be used within ThemeProvider');
-  }
-  
-  return context;
-}
+export default AuthContext;
 ```
 
-### ¿Por qué esta estructura?
+**Características clave de AuthContext**:
 
-Este patrón (Provider + Custom Hook) es la mejor práctica porque:
+1. **Persistencia de sesión**: Lee el usuario desde el token JWT almacenado en localStorage al iniciar
+2. **Validación automática**: El `useEffect` verifica si el token está activo y configura un handler para logout automático si expira
+3. **Estado de carga**: `isLoading` permite mostrar spinners durante el login
+4. **useCallback**: Optimiza las funciones para evitar re-renders innecesarios
+5. **Separación de responsabilidades**: Delega lógica de token a `utils/auth` y llamadas API a `api-client-factory`
 
-- **Encapsulación**: Toda la lógica del tema está en un solo lugar
-- **Validación automática**: El custom hook detecta errores de configuración
-- **Type-safety**: TypeScript garantiza que usamos el Context correctamente
-- **Reutilización**: Cualquier componente puede importar `useTheme()` y ya está
+### 2. ProjectContext - Gestión del proyecto actual
 
-### Componente que usa Context: src/components/ThemeToggle.tsx
+Context más simple que maneja qué proyecto está activo en la aplicación:
 
-Ahora creamos un componente que **consume** el Context:
+#### Código: ui/src/context/ProjectContext.tsx
 
 ```tsx
-import React from 'react';
-import { useTheme } from '../context/ThemeContext';
+import { createContext, ReactNode, useCallback, useState } from 'react';
+import { Project } from '../model/project';
 
-export function ThemeToggle() {
-  // Obtenemos theme y toggleTheme del Context
-  const { theme, toggleTheme } = useTheme();
+type ProjectcontextType = {
+  project: Project | undefined;
+  addProject: (newProject: Project) => void;
+  removeProject: () => void;
+};
+
+const ProjectContext = createContext<ProjectcontextType>({
+  project: undefined,
+  addProject: () => {},
+  removeProject: () => {}
+});
+
+interface Props {
+  children: ReactNode;
+}
+
+export function ProjectProvider({ children }: Props) {
+  const [project, setProject] = useState<Project | undefined>(undefined);
+
+  const addProject = useCallback(
+    (newProject: Project) => {
+      setProject(newProject);
+    },
+    [setProject]
+  );
+
+  const removeProject = useCallback(() => {
+    setProject(undefined);
+  }, [setProject]);
 
   return (
-    <div className={`theme-toggle ${theme}`}>
-      {/* Mostramos el tema actual */}
-      <p>Current theme: {theme}</p>
-      
-      {/* Botón que llama a toggleTheme cuando se hace click */}
-      <button onClick={toggleTheme}>
-        Switch to {theme === 'light' ? 'dark' : 'light'}
-      </button>
-    </div>
+    <ProjectContext.Provider value={{ project, addProject, removeProject }}>
+      {children}
+    </ProjectContext.Provider>
   );
+}
+
+export default ProjectContext;
+```
+
+**ProjectContext es más simple pero igualmente importante**:
+- Almacena el proyecto actualmente seleccionado
+- Otros componentes pueden acceder a `project` para mostrar detalles
+- `addProject` y `removeProject` permiten cambiar el proyecto activo
+
+### Modelos de datos
+
+#### User (ui/src/model/user.ts)
+```tsx
+export interface User {
+  active: boolean;
+  _id: string;
+  email: string;
 }
 ```
 
-Este componente es simple pero ilustra perfectamente la integración:
-1. **Consume** el Context usando el custom hook
-2. **Lee** el estado actual para mostrarlo
-3. **Modifica** el estado llamando a `toggleTheme`
+#### Project (ui/src/model/project.ts)
+```tsx
+export interface Project {
+  _id?: string;
+  title: string;
+  description: string;
+  // ... más propiedades
+}
+```
 
 ## Test de Integración con Context
 
-Ahora viene la parte importante: **cómo testar esta integración**. No vamos a mockear el Context; vamos a usar el Provider real para verificar que todo funciona como en producción.
+Ahora viene la parte importante: **cómo testar esta integración con los Context reales del proyecto**. No vamos a mockear el Context; vamos a usar los Provider reales para verificar que todo funciona como en producción.
 
 ### Patrón: Helper de Renderizado
 
-Es una buena práctica crear una función helper que envuelve componentes con el Provider:
+Es una buena práctica crear funciones helper que envuelven componentes con los Providers:
 
 ```tsx
-function renderWithTheme(ui: React.ReactElement) {
+// Helper para AuthContext
+function renderWithAuth(ui: React.ReactElement) {
   return render(
-    <ThemeProvider>
+    <AuthProvider>
       {ui}
-    </ThemeProvider>
+    </AuthProvider>
+  );
+}
+
+// Helper para ProjectContext
+function renderWithProject(ui: React.ReactElement) {
+  return render(
+    <ProjectProvider>
+      {ui}
+    </ProjectProvider>
+  );
+}
+
+// Helper combinado (para componentes que necesitan ambos)
+function renderWithProviders(ui: React.ReactElement) {
+  return render(
+    <AuthProvider>
+      <ProjectProvider>
+        {ui}
+      </ProjectProvider>
+    </AuthProvider>
   );
 }
 ```
 
 **¿Por qué es útil?**
+
 - **DRY (Don't Repeat Yourself)**: No repetimos el Provider en cada test
 - **Mantenibilidad**: Si cambiamos el Provider, solo actualizamos un lugar
 - **Claridad**: El intent del test queda más claro
 
-### Test: src/components/tests/ThemeToggle.integration.test.tsx
+### Test 1: ProjectContext - Gestión de proyecto
+
+Primero testeamos el Context más simple para entender los conceptos básicos:
 
 ```tsx
-import React from 'react';
 import { render, screen, fireEvent } from '@testing-library/react';
-import { ThemeProvider } from '../../context/ThemeContext';
-import { ThemeToggle } from '../ThemeToggle';
+import { ProjectProvider } from '../../context/ProjectContext';
+import { useProject } from '../../hooks/useProject';
+import { Project } from '../../model/project';
 
-// Helper para renderizar con Provider - centraliza la configuración
-function renderWithTheme(ui: React.ReactElement) {
-  return render(
-    <ThemeProvider>
-      {ui}
-    </ThemeProvider>
+// Componente de prueba que consume ProjectContext
+function ProjectDisplay() {
+  const { project, addProject, removeProject } = useProject();
+  
+  const handleAdd = () => {
+    const newProject: Project = {
+      _id: '123',
+      title: 'Test Project',
+      description: 'A test project'
+    };
+    addProject(newProject);
+  };
+
+  return (
+    <div>
+      {project ? (
+        <>
+          <h1>{project.title}</h1>
+          <p>{project.description}</p>
+          <button onClick={removeProject}>Remove Project</button>
+        </>
+      ) : (
+        <>
+          <p>No project</p>
+          <button onClick={handleAdd}>Add Project</button>
+        </>
+      )}
+    </div>
   );
 }
 
-describe('ThemeToggle Integration', () => {
+describe('ProjectContext Integration', () => {
   
-  it('debe iniciar con tema light', () => {
-    // Renderizamos el componente con su Provider real
-    renderWithTheme(<ThemeToggle />);
+  it('debe iniciar sin proyecto', () => {
+    render(
+      <ProjectProvider>
+        <ProjectDisplay />
+      </ProjectProvider>
+    );
     
-    // Verificamos que el estado inicial sea 'light'
-    expect(screen.getByText('Current theme: light')).toBeInTheDocument();
+    expect(screen.getByText('No project')).toBeInTheDocument();
   });
 
-  it('debe cambiar a dark al hacer click', () => {
-    renderWithTheme(<ThemeToggle />);
+  it('debe agregar un proyecto', () => {
+    render(
+      <ProjectProvider>
+        <ProjectDisplay />
+      </ProjectProvider>
+    );
     
-    // Encontramos el botón y simulamos un click
-    const button = screen.getByRole('button');
-    fireEvent.click(button);
+    // Click en agregar
+    fireEvent.click(screen.getByText('Add Project'));
     
-    // Verificamos que el estado cambió a 'dark'
-    expect(screen.getByText('Current theme: dark')).toBeInTheDocument();
-    
-    // Y que el texto del botón también cambió
-    expect(screen.getByText('Switch to light')).toBeInTheDocument();
+    // Verificamos que el proyecto se agregó
+    expect(screen.getByText('Test Project')).toBeInTheDocument();
+    expect(screen.getByText('A test project')).toBeInTheDocument();
   });
 
-  it('debe alternar entre temas múltiples veces', () => {
-    renderWithTheme(<ThemeToggle />);
+  it('debe remover el proyecto', () => {
+    render(
+      <ProjectProvider>
+        <ProjectDisplay />
+      </ProjectProvider>
+    );
     
-    const button = screen.getByRole('button');
+    // Agregamos proyecto
+    fireEvent.click(screen.getByText('Add Project'));
+    expect(screen.getByText('Test Project')).toBeInTheDocument();
     
-    // Probamos múltiples toggles para verificar la consistencia
-    // Light → Dark
-    fireEvent.click(button);
-    expect(screen.getByText('Current theme: dark')).toBeInTheDocument();
-    
-    // Dark → Light
-    fireEvent.click(button);
-    expect(screen.getByText('Current theme: light')).toBeInTheDocument();
-    
-    // Light → Dark
-    fireEvent.click(button);
-    expect(screen.getByText('Current theme: dark')).toBeInTheDocument();
+    // Removemos proyecto
+    fireEvent.click(screen.getByText('Remove Project'));
+    expect(screen.getByText('No project')).toBeInTheDocument();
   });
 });
 ```
 
-### ¿Qué estamos validando?
+**¿Qué estamos validando?**
 
-Estos tests verifican **tres aspectos críticos** de la integración:
-
-1. **Estado inicial**: El Provider proporciona el valor inicial correcto (`light`)
-2. **Flujo unidireccional**: Cuando llamamos `toggleTheme`, el estado se actualiza y el componente re-renderiza
-3. **Consistencia**: El toggle funciona correctamente múltiples veces sin romper el estado
+1. **Estado inicial**: El Provider inicia con `project: undefined`
+2. **addProject**: Actualiza el estado y re-renderiza componentes
+3. **removeProject**: Limpia el estado correctamente
 
 :::tip Diferencia clave con tests unitarios
-En un test unitario, mockearíamos `useTheme()` así:
+En un test unitario, mockearíamos `useProject()` así:
 ```tsx
-jest.mock('../context/ThemeContext', () => ({
-  useTheme: () => ({ theme: 'light', toggleTheme: jest.fn() })
+jest.mock('../../hooks/useProject', () => ({
+  useProject: () => ({ 
+    project: undefined, 
+    addProject: jest.fn(),
+    removeProject: jest.fn()
+  })
 }));
 ```
 
 Pero en integración **usamos el Provider real** para verificar que la integración completa funciona.
 :::
 
+### Test 2: AuthContext - Login y gestión de sesión
 
-
-## Ejemplo Complejo: Auth Context
-
-El ejemplo del tema es simple y didáctico, pero las aplicaciones reales necesitan Context más sofisticados. Vamos a construir un **sistema de autenticación completo** que maneja:
-- Estado del usuario (logueado o no)
-- Proceso de login asíncrono
-- Validaciones de credenciales
-- Manejo de errores
-
-Este ejemplo es mucho más cercano a lo que encontrarás en producción y demuestra patrones avanzados de testing con Context.
-
-### Código: src/context/AuthContext.tsx
+AuthContext es más complejo porque maneja **operaciones asíncronas** y **llamadas API**. Necesitamos mockear las dependencias externas pero usar el Context real:
 
 ```tsx
-import React, { createContext, useContext, useState, ReactNode } from 'react';
+import { render, screen, waitFor, fireEvent } from '@testing-library/react';
+import { AuthProvider } from '../../context/AuthContext';
+import { useAuth } from '../../hooks/useAuth';
+import * as authUtils from '../../utils/auth';
+import createApiClient from '../../api/api-client-factory';
 
-// Modelo del usuario autenticado
-interface User {
-  id: string;
-  email: string;
-  name: string;
-}
+// Mockeamos dependencias externas
+jest.mock('../../utils/auth');
+jest.mock('../../api/api-client-factory');
 
-// El Context proporciona tanto el estado como las acciones
-interface AuthContextType {
-  user: User | null;                    // Usuario actual (null si no está logueado)
-  login: (email: string, password: string) => Promise<void>; // Función asíncrona de login
-  logout: () => void;                   // Función de logout
-  isAuthenticated: boolean;             // Computed value para facilitar checks
-}
-
-const AuthContext = createContext<AuthContextType | undefined>(undefined);
-
-export function AuthProvider({ children }: { children: ReactNode }) {
-  const [user, setUser] = useState<User | null>(null);
-
-  // Login asíncrono - simula llamada a API
-  const login = async (email: string, password: string) => {
-    // Validación básica de credenciales
-    if (email && password.length >= 6) {
-      // En producción, esto haría un fetch a tu backend
-      // Simulamos un delay de red
-      await new Promise(resolve => setTimeout(resolve, 100));
-      
-      setUser({
-        id: '123',
-        email,
-        name: email.split('@')[0], // Extraemos nombre del email
-      });
-    } else {
-      // Si las credenciales son inválidas, lanzamos error
-      throw new Error('Invalid credentials');
-    }
+// Componente de prueba
+function AuthStatus() {
+  const { user, isLoading, login, logout } = useAuth();
+  
+  const handleLogin = () => {
+    login('testuser', 'password123');
   };
 
-  const logout = () => {
-    setUser(null);
-  };
+  if (isLoading) {
+    return <div>Loading...</div>;
+  }
 
   return (
-    <AuthContext.Provider 
-      value={{ 
-        user, 
-        login, 
-        logout, 
-        isAuthenticated: !!user  // Convertimos user a boolean
-      }}
-    >
-      {children}
-    </AuthContext.Provider>
+    <div>
+      {user ? (
+        <>
+          <p>User: {user.email}</p>
+          <button onClick={logout}>Logout</button>
+        </>
+      ) : (
+        <>
+          <p>Not logged in</p>
+          <button onClick={handleLogin}>Login</button>
+        </>
+      )}
+    </div>
   );
 }
 
-export function useAuth() {
-  const context = useContext(AuthContext);
-  if (!context) {
-    throw new Error('useAuth must be used within AuthProvider');
-  }
-  return context;
-}
+describe('AuthContext Integration', () => {
+  
+  beforeEach(() => {
+    // Reseteamos todos los mocks antes de cada test
+    jest.clearAllMocks();
+    
+    // Configuramos comportamiento por defecto de auth utils
+    (authUtils.getCurrentUser as jest.Mock).mockReturnValue(undefined);
+    (authUtils.isTokenActive as jest.Mock).mockReturnValue(false);
+  });
+
+  it('debe iniciar sin usuario si no hay token', () => {
+    render(
+      <AuthProvider>
+        <AuthStatus />
+      </AuthProvider>
+    );
+    
+    expect(screen.getByText('Not logged in')).toBeInTheDocument();
+  });
+
+  it('debe hacer login exitosamente', async () => {
+    // Mock del API client
+    const mockToken = jest.fn().mockResolvedValue({ token: 'fake-jwt-token' });
+    (createApiClient as jest.Mock).mockReturnValue({ token: mockToken });
+    
+    // Mock de getCurrentUser después del login
+    const mockUser = { _id: '123', email: 'test@example.com', active: true };
+    (authUtils.getCurrentUser as jest.Mock).mockReturnValue(mockUser);
+    
+    render(
+      <AuthProvider>
+        <AuthStatus />
+      </AuthProvider>
+    );
+    
+    // Hacemos click en login
+    fireEvent.click(screen.getByText('Login'));
+    
+    // Verificamos loading state
+    expect(screen.getByText('Loading...')).toBeInTheDocument();
+    
+    // Esperamos a que termine el login
+    await waitFor(() => {
+      expect(screen.getByText('User: test@example.com')).toBeInTheDocument();
+    });
+    
+    // Verificamos que se llamó al API correctamente
+    expect(mockToken).toHaveBeenCalledWith('testuser', 'password123');
+    expect(authUtils.setAuthToken).toHaveBeenCalledWith('fake-jwt-token');
+  });
+
+  it('debe manejar errores de login', async () => {
+    // Mock que simula error de API
+    const mockToken = jest.fn().mockRejectedValue(new Error('Invalid credentials'));
+    (createApiClient as jest.Mock).mockReturnValue({ token: mockToken });
+    
+    render(
+      <AuthProvider>
+        <AuthStatus />
+      </AuthProvider>
+    );
+    
+    // Intentamos login
+    fireEvent.click(screen.getByText('Login'));
+    
+    // Esperamos a que termine (con error)
+    await waitFor(() => {
+      expect(screen.getByText('Not logged in')).toBeInTheDocument();
+    });
+    
+    // El loading debe desaparecer
+    expect(screen.queryByText('Loading...')).not.toBeInTheDocument();
+  });
+
+  it('debe hacer logout correctamente', async () => {
+    // Configuramos estado inicial con usuario logueado
+    const mockUser = { _id: '123', email: 'test@example.com', active: true };
+    (authUtils.getCurrentUser as jest.Mock).mockReturnValue(mockUser);
+    (authUtils.isTokenActive as jest.Mock).mockReturnValue(true);
+    
+    render(
+      <AuthProvider>
+        <AuthStatus />
+      </AuthProvider>
+    );
+    
+    // Verificamos que está logueado
+    expect(screen.getByText('User: test@example.com')).toBeInTheDocument();
+    
+    // Hacemos logout
+    fireEvent.click(screen.getByText('Logout'));
+    
+    await waitFor(() => {
+      expect(screen.getByText('Not logged in')).toBeInTheDocument();
+    });
+    
+    // Verificamos que se llamó al servicio de logout
+    expect(authUtils.logout).toHaveBeenCalled();
+  });
+});
 ```
 
-### ¿Qué hace especial este Context?
+**Conceptos clave de este test**:
 
-A diferencia del ThemeContext simple, aquí tenemos:
+1. **Mock de dependencias externas**: Mockeamos `auth utils` y `api-client` pero **NO** el AuthContext
+2. **Estado de carga**: Verificamos que `isLoading` funciona correctamente
+3. **Operaciones asíncronas**: Usamos `waitFor` para esperar cambios de estado
+4. **Configuración de estado inicial**: Podemos simular usuario ya logueado con `mockReturnValue`
 
-1. **Operaciones asíncronas**: `login()` retorna una Promise porque simula una llamada API
-2. **Manejo de errores**: Lanzamos excepciones si las credenciales son inválidas
-3. **Estado derivado**: `isAuthenticated` se calcula automáticamente desde `user`
-4. **Modelo de datos complejo**: `User` es un objeto con múltiples propiedades
+### Test 3: Múltiples consumidores compartiendo Context
 
-Estos son patrones que verás en **todas las aplicaciones reales** con autenticación.
+Un test importante es verificar que **múltiples componentes** pueden compartir el mismo Context y sincronizarse correctamente:
 
-### Componente: src/components/LoginForm.tsx
+```tsx
+function UserDisplay() {
+  const { user } = useAuth();
+  return <div>{user ? `Logged as: ${user.email}` : 'Not logged'}</div>;
+}
 
-Ahora creamos un formulario de login que utiliza el AuthContext:
+function LoginButton() {
+  const { login, isLoading } = useAuth();
+  
+  return (
+    <button 
+      onClick={() => login('user@test.com', 'pass123')}
+      disabled={isLoading}
+    >
+      {isLoading ? 'Logging in...' : 'Login'}
+    </button>
+  );
+}
+
+describe('Multiple consumers sharing AuthContext', () => {
+  
+  beforeEach(() => {
+    jest.clearAllMocks();
+    (authUtils.getCurrentUser as jest.Mock).mockReturnValue(undefined);
+    (authUtils.isTokenActive as jest.Mock).mockReturnValue(false);
+    
+    const mockUser = { _id: '1', email: 'user@test.com', active: true };
+    const mockToken = jest.fn().mockResolvedValue({ token: 'token' });
+    (createApiClient as jest.Mock).mockReturnValue({ token: mockToken });
+    (authUtils.getCurrentUser as jest.Mock).mockReturnValue(mockUser);
+  });
+
+  it('debe sincronizar múltiples componentes', async () => {
+    render(
+      <AuthProvider>
+        <UserDisplay />
+        <LoginButton />
+      </AuthProvider>
+    );
+    
+    // Estado inicial: ambos componentes muestran "no logueado"
+    expect(screen.getByText('Not logged')).toBeInTheDocument();
+    expect(screen.getByText('Login')).toBeInTheDocument();
+    
+    // Click en login desde LoginButton
+    fireEvent.click(screen.getByText('Login'));
+    
+    // Ambos componentes deben mostrar estado de carga
+    expect(screen.getByText('Logging in...')).toBeInTheDocument();
+    
+    // Después del login, UserDisplay debe actualizarse automáticamente
+    await waitFor(() => {
+      expect(screen.getByText('Logged as: user@test.com')).toBeInTheDocument();
+    });
+    
+    // Y LoginButton debe volver al estado normal
+    expect(screen.getByText('Login')).toBeInTheDocument();
+    expect(screen.getByRole('button')).not.toBeDisabled();
+  });
+});
+```
+
+**¿Por qué este test es valioso?**
+
+- Verifica que el Context **realmente comparte estado** entre componentes
+- Detecta problemas de sincronización o renders innecesarios
+- Simula cómo se usa el Context en la aplicación real (múltiples componentes consumiendo)
+
+## Ejemplo Complejo: Testing con Formularios
+
+El siguiente patrón común es testar formularios que usan Context. Veamos un componente de login más real con formulario controlado:
+
+### Componente: LoginForm con estado local y Context
 
 ```tsx
 import React, { useState } from 'react';
-import { useAuth } from '../context/AuthContext';
+import { useAuth } from '../hooks/useAuth';
 
 export function LoginForm() {
   // Estado local del formulario
@@ -374,7 +647,7 @@ export function LoginForm() {
   const [error, setError] = useState('');
   
   // Estado global de autenticación
-  const { login, isAuthenticated, user } = useAuth();
+  const { login, isLoading, user } = useAuth();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -388,8 +661,8 @@ export function LoginForm() {
   };
 
   // Si el usuario ya está autenticado, mostramos mensaje de bienvenida
-  if (isAuthenticated && user) {
-    return <div>Welcome, {user.name}!</div>;
+  if (user) {
+    return <div>Welcome, {user.email}!</div>;
   }
 
   // Si no, mostramos el formulario
@@ -409,7 +682,9 @@ export function LoginForm() {
         onChange={(e) => setPassword(e.target.value)}
         aria-label="password"
       />
-      <button type="submit">Login</button>
+      <button type="submit" disabled={isLoading}>
+        {isLoading ? 'Logging in...' : 'Login'}
+      </button>
       {error && <div role="alert">{error}</div>}
     </form>
   );
@@ -420,213 +695,244 @@ export function LoginForm() {
 
 Este componente demuestra **varios patrones importantes**:
 
-1. **Estado local + Estado global**: 
-   - `email` y `password` son locales (solo el formulario los necesita)
-   - `user` e `isAuthenticated` son globales (múltiples componentes los necesitan)
+1. **Estado local + Estado global**:
 
-2. **Renderizado condicional**: 
+   - `email` y `password` son locales (solo el formulario los necesita)
+   - `user` e `isLoading` son globales (múltiples componentes los necesitan)
+
+2. **Renderizado condicional**:
+
    - Si está autenticado → muestra bienvenida
    - Si no → muestra formulario
 
-3. **Manejo de errores**: 
+3. **Manejo de errores**:
+
    - Capturamos errores del Context con try/catch
    - Mostramos mensajes al usuario
 
-4. **Accesibilidad**: 
+4. **Accesibilidad**:
+
    - Usamos `aria-label` para screen readers
    - Usamos `role="alert"` para errores
 
-## Test de Integración del Auth Flow
-
-Ahora testeamos el **flujo completo de autenticación**. Estos tests son complejos porque involucran:
-- Interacciones del usuario (typing, clicks)
-- Operaciones asíncronas (login)
-- Cambios de estado globales
-- Manejo de errores
-
-### Test Completo: src/components/tests/LoginForm.integration.test.tsx
+## Tests completos del LoginForm
 
 ```tsx
-import React from 'react';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { AuthProvider } from '../../context/AuthContext';
 import { LoginForm } from '../LoginForm';
+import * as authUtils from '../../utils/auth';
+import createApiClient from '../../api/api-client-factory';
 
-// Helper que envuelve con AuthProvider
+jest.mock('../../utils/auth');
+jest.mock('../../api/api-client-factory');
+
 function renderWithAuth(ui: React.ReactElement) {
   return render(<AuthProvider>{ui}</AuthProvider>);
 }
 
 describe('LoginForm Integration', () => {
   
-  it('debe hacer login exitosamente', async () => {
-    // userEvent.setup() es necesario para simular interacciones realistas
-    const user = userEvent.setup();
+  beforeEach(() => {
+    jest.clearAllMocks();
+    (authUtils.getCurrentUser as jest.Mock).mockReturnValue(undefined);
+    (authUtils.isTokenActive as jest.Mock).mockReturnValue(false);
+  });
+
+  it('debe renderizar el formulario inicialmente', () => {
     renderWithAuth(<LoginForm />);
     
-    // Llenar formulario - userEvent simula el typing real del usuario
-    await user.type(screen.getByLabelText('email'), 'user@example.com');
+    expect(screen.getByLabelText('email')).toBeInTheDocument();
+    expect(screen.getByLabelText('password')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Login' })).toBeInTheDocument();
+  });
+
+  it('debe hacer login exitosamente', async () => {
+    const user = userEvent.setup();
+    
+    // Mock exitoso
+    const mockToken = jest.fn().mockResolvedValue({ token: 'jwt-token' });
+    (createApiClient as jest.Mock).mockReturnValue({ token: mockToken });
+    
+    const mockUser = { _id: '1', email: 'test@example.com', active: true };
+    (authUtils.getCurrentUser as jest.Mock).mockReturnValue(mockUser);
+    
+    renderWithAuth(<LoginForm />);
+    
+    // Llenar formulario
+    await user.type(screen.getByLabelText('email'), 'test@example.com');
     await user.type(screen.getByLabelText('password'), 'password123');
     
-    // Submit - buscamos el botón por su rol y texto
+    // Submit
     await user.click(screen.getByRole('button', { name: 'Login' }));
     
-    // Verificar que el mensaje de bienvenida aparece
-    // waitFor es crucial porque login es asíncrono
+    // Verificar mensaje de bienvenida
     await waitFor(() => {
-      expect(screen.getByText('Welcome, user!')).toBeInTheDocument();
+      expect(screen.getByText('Welcome, test@example.com!')).toBeInTheDocument();
     });
     
-    // Verificación adicional: el formulario desapareció
+    // El formulario debe desaparecer
     expect(screen.queryByLabelText('email')).not.toBeInTheDocument();
   });
 
   it('debe mostrar error con credenciales inválidas', async () => {
     const user = userEvent.setup();
+    
+    // Mock que falla
+    const mockToken = jest.fn().mockRejectedValue(new Error());
+    (createApiClient as jest.Mock).mockReturnValue({ token: mockToken });
+    
     renderWithAuth(<LoginForm />);
     
-    await user.type(screen.getByLabelText('email'), 'user@example.com');
-    await user.type(screen.getByLabelText('password'), '123'); // Password muy corto
-    
+    await user.type(screen.getByLabelText('email'), 'bad@example.com');
+    await user.type(screen.getByLabelText('password'), 'wrong');
     await user.click(screen.getByRole('button', { name: 'Login' }));
     
-    // Esperamos a que aparezca el mensaje de error
+    // Esperar error
     await waitFor(() => {
       expect(screen.getByRole('alert')).toHaveTextContent('Invalid credentials');
     });
     
-    // Verificamos que el formulario sigue visible (no hubo login)
+    // Formulario sigue visible
     expect(screen.getByLabelText('email')).toBeInTheDocument();
   });
 
-  it('debe permitir login después de error', async () => {
+  it('debe deshabilitar el botón durante login', async () => {
     const user = userEvent.setup();
+    
+    // Mock que demora
+    const mockToken = jest.fn(() => new Promise(resolve => setTimeout(resolve, 1000)));
+    (createApiClient as jest.Mock).mockReturnValue({ token: mockToken });
+    
     renderWithAuth(<LoginForm />);
     
-    // ========== PRIMER INTENTO (FALLIDO) ==========
-    await user.type(screen.getByLabelText('email'), 'user@example.com');
-    await user.type(screen.getByLabelText('password'), '123');
+    await user.type(screen.getByLabelText('email'), 'test@example.com');
+    await user.type(screen.getByLabelText('password'), 'password123');
     await user.click(screen.getByRole('button', { name: 'Login' }));
     
-    // Verificamos que apareció el error
-    await waitFor(() => {
-      expect(screen.getByRole('alert')).toBeInTheDocument();
-    });
-    
-    // ========== SEGUNDO INTENTO (EXITOSO) ==========
-    const passwordInput = screen.getByLabelText('password');
-    await user.clear(passwordInput);  // Limpiamos el campo
-    await user.type(passwordInput, 'password123'); // Password correcto
-    await user.click(screen.getByRole('button', { name: 'Login' }));
-    
-    // Verificamos que ahora sí se logueó
-    await waitFor(() => {
-      expect(screen.getByText('Welcome, user!')).toBeInTheDocument();
-    });
-    
-    // Y que el error desapareció
-    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
-  });
-
-  it('debe limpiar el error al reintentar después de fallo', async () => {
-    const user = userEvent.setup();
-    renderWithAuth(<LoginForm />);
-    
-    // Primer intento fallido
-    await user.type(screen.getByLabelText('email'), 'bad@example.com');
-    await user.type(screen.getByLabelText('password'), '12');
-    await user.click(screen.getByRole('button', { name: 'Login' }));
-    
-    await waitFor(() => {
-      expect(screen.getByRole('alert')).toBeInTheDocument();
-    });
-    
-    // Modificamos el password (aún incorrecto)
-    const passwordInput = screen.getByLabelText('password');
-    await user.clear(passwordInput);
-    await user.type(passwordInput, '123');
-    await user.click(screen.getByRole('button', { name: 'Login' }));
-    
-    // El error debe seguir ahí, pero el mensaje debe actualizarse
-    await waitFor(() => {
-      expect(screen.getByRole('alert')).toHaveTextContent('Invalid credentials');
-    });
+    // El botón debe estar deshabilitado y mostrar texto de carga
+    const button = screen.getByRole('button');
+    expect(button).toBeDisabled();
+    expect(button).toHaveTextContent('Logging in...');
   });
 });
 ```
 
-### Desglose de técnicas avanzadas
+### ¿Qué técnicas nuevas vemos aquí?
 
-Estos tests demuestran **técnicas cruciales** para testing de integración:
+1. **userEvent vs fireEvent**:
 
-#### 1. `userEvent` vs `fireEvent`
+   - `userEvent` simula interacciones más realistas (typing completo, focus, blur)
+   - `fireEvent` dispara eventos directamente (más rápido pero menos realista)
 
-```tsx
-// ❌ Menos realista
-fireEvent.change(input, { target: { value: 'texto' } });
+2. **Testing de estados de UI**:
 
-// ✅ Más realista - simula typing character por character
-await user.type(input, 'texto');
-```
-
-`userEvent` simula las interacciones **exactamente como un usuario real**, incluyendo:
+   - Botón deshabilitado durante loading
+   - Texto del botón cambia
 - Focus/blur automático
-- Eventos de teclado individuales
-- Validaciones de formulario
-- Timing realista
 
-#### 2. `waitFor` para operaciones asíncronas
+3. **Manejo de Promises demoradas**:
 
-```tsx
-// ❌ Falla porque el login aún no terminó
-expect(screen.getByText('Welcome, user!')).toBeInTheDocument();
+   - Simulamos delays de red para testear loading states
 
-// ✅ Espera hasta que el elemento aparezca
-await waitFor(() => {
-  expect(screen.getByText('Welcome, user!')).toBeInTheDocument();
-});
-```
+## Cuándo usar qué estrategia
 
-`waitFor` es **esencial** cuando:
+Ahora que vimos varios enfoques, ¿cuándo usar cada uno?
+
+### Tests unitarios con Context mockeado
+
+**Cuándo**:
+
 - Haces llamadas asíncronas (API, login, etc.)
-- Esperas cambios de estado que disparan re-renders
-- Tienes animaciones o transiciones
+- Solo te importa la lógica del componente (no la integración)
+- Quieres tests rápidos y aislados
 
-#### 3. Queries negativas con `queryBy`
-
+**Cómo**:
 ```tsx
-// ❌ getByLabelText lanza error si no encuentra el elemento
-expect(screen.getByLabelText('email')).not.toBeInTheDocument(); // ¡FALLA!
-
-// ✅ queryByLabelText retorna null si no encuentra
-expect(screen.queryByLabelText('email')).not.toBeInTheDocument(); // ✓
+jest.mock('../../hooks/useAuth', () => ({
+  useAuth: () => ({ 
+    user: mockUser,
+    login: mockLogin,
+    // ...
+  })
+}));
 ```
 
-Regla general:
+### Tests de integración con Provider real
+
+**Cuándo**:
+
+- Quieres verificar el flujo completo (Provider → Consumer)
+- Testeas múltiples componentes interactuando
+- Verificas sincronización de estado entre componentes
+
+**Cómo**:
+```tsx
+render(
+  <AuthProvider>
+    <YourComponent />
+  </AuthProvider>
+);
+```
+
+### Guía rápida de queries
+
+Al buscar elementos en tests con Context, usa estas queries según el caso:
+
 - **`getBy*`**: Cuando **esperas** que el elemento exista (falla si no está)
 - **`queryBy*`**: Cuando **verificas ausencia** (retorna null si no está)
 - **`findBy*`**: Cuando **esperas que aparezca** asincrónicamente (equivale a `waitFor` + `getBy`)
+
+```tsx
+// Ejemplo de uso de queries
+const button = screen.getByRole('button', { name: 'Login' });  // Falla si no existe
+const error = screen.queryByRole('alert');  // Retorna null si no existe
+const welcome = await screen.findByText('Welcome!');  // Espera hasta que aparezca
+```
 
 :::warning Errores comunes
 1. **No usar `await` con `waitFor`**: El test pasa aunque falle
 2. **Usar `getBy` para verificar ausencia**: Lanza error en lugar de pasar
 3. **No limpiar estado entre tests**: Los tests se afectan mutuamente
+4. **No mockear dependencias externas**: Los tests fallan por problemas de red/API
 :::
 
-### ¿Por qué estos tests son valiosos?
+## Resumen: Context Testing Best Practices
 
-Estos tests de integración nos dan **confianza total** en que:
+Hemos cubierto testing de **AuthContext** y **ProjectContext** del proyecto Taller-Testing-Security. Estos son los patrones clave:
 
-1. **El Context funciona**: El AuthProvider proporciona correctamente las funciones y estado
-2. **El flujo es correcto**: Login → Update state → Re-render → Show welcome
-3. **Los errores se manejan**: Credenciales inválidas muestran mensajes apropiados
-4. **El estado es consistente**: Después de un error, podemos intentar de nuevo
-5. **La UX es correcta**: Los elementos aparecen/desaparecen en el momento adecuado
+| Concepto | Descripción | Ejemplo |
+|----------|-------------|---------|
+| **Helper de renderizado** | Función que envuelve componentes con Provider | `renderWithAuth(<Component />)` |
+| **Mock de dependencias externas** | Mockear APIs/utils, no el Context | `jest.mock('../../utils/auth')` |
+| **waitFor para async** | Esperar cambios de estado asíncronos | `await waitFor(() => expect(...))` |
+| **queryBy para ausencia** | Verificar que elementos NO existen | `expect(screen.queryByText(...)).not.toBeInTheDocument()` |
+| **userEvent para interacciones** | Simular typing y clicks realistas | `await user.type(input, 'text')` |
+| **beforeEach para limpieza** | Resetear mocks entre tests | `jest.clearAllMocks()` |
 
-Si estos tests pasan, podemos estar **99% seguros** de que el login funcionará en producción.
+### Tests del proyecto cubiertos
+
+| Context | Tests realizados | Conceptos validados |
+|---------|-----------------|---------------------|
+| **ProjectContext** | Agregar/remover proyecto | Estado inicial, mutaciones, sincronización |
+| **AuthContext** | Login, logout, estados de carga | Async, mocks, loading states, múltiples consumidores |
+| **LoginForm** | Formulario completo con Context | userEvent, validaciones, estados de UI |
+
+### Checklist de testing con Context
+
+Al testear componentes con Context, asegúrate de:
+
+- ✅ Usar el Provider real (no mockear el Context)
+- ✅ Mockear **solo** dependencias externas (APIs, localStorage, etc.)
+- ✅ Testear estado inicial del Provider
+- ✅ Verificar sincronización entre múltiples consumidores
+- ✅ Probar manejo de errores (API failures, validaciones)
+- ✅ Validar estados de carga (isLoading, spinners, botones deshabilitados)
+- ✅ Usar `waitFor` para operaciones asíncronas
+- ✅ Limpiar mocks con `beforeEach`
 
 :::tip Próximos pasos
-En la siguiente sección veremos cómo testar **custom hooks** que usan Context, como `useFetchUser` que combina `useAuth` con llamadas API.
+En la siguiente sección (`msw.md`) veremos cómo usar **Mock Service Worker** para simular APIs completas sin mockear funciones individuales. Esto nos permitirá testear flujos end-to-end con datos realistas.
 :::
 

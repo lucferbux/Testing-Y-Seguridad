@@ -70,450 +70,531 @@ Antes de comenzar con los tests, entendamos cómo funciona la autenticación con
 
 
 
-## Implementación: Backend Auth Router
+## Análisis del Sistema de Autenticación: Taller-Testing-Security
 
-Vamos a construir un sistema de autenticación completo con Express y JWT.
+Vamos a analizar el sistema de autenticación real del proyecto **Taller-Testing-Security** que usa JWT (JSON Web Tokens) y bcrypt para manejar passwords de forma segura.
 
-### Instalación de dependencias
+### Instalación de Dependencias
 
 ```bash
-npm install jsonwebtoken bcrypt
+npm install jsonwebtoken bcrypt http-status-codes
 npm install --save-dev @types/jsonwebtoken @types/bcrypt
 ```
 
-### Código: authRouter.ts
+### Estructura del Sistema de Auth
+
+```
+api/src/
+├── routes/
+│   └── AuthRouter.ts          # Define endpoint /login
+├── components/
+│   ├── Auth/
+│   │   ├── index.ts            # Controller (login, signup, user)
+│   │   ├── service.ts          # Lógica de negocio
+│   │   ├── validation.ts       # Joi schemas
+│   │   └── interface.ts        # TypeScript interfaces
+│   ├── User/
+│   │   └── model.ts            # Mongoose model con comparePassword
+└── config/
+    └── server/server.ts     # Secret key de JWT
+```
+
+### Código Real: api/src/routes/AuthRouter.ts
 
 ```typescript
-import { Router, Request, Response } from 'express';
+import { AuthComponent } from '@/components';
+import { Router } from 'express';
+
+const router: Router = Router();
+
+// POST /v1/auth/login
+router.post('/login', AuthComponent.login);
+
+export default router;
+```
+
+**Arquitectura simple**: El router delega todo al controller `AuthComponent.login`.
+
+### Controller: api/src/components/Auth/index.ts
+
+El controller maneja la lógica HTTP (request/response) y delega la lógica de negocio al service:
+
+```typescript
+import HttpStatus from 'http-status-codes';
 import jwt from 'jsonwebtoken';
-import bcrypt from 'bcrypt';
-
-const authRouter = Router();
-
-// En producción, esto viene de variables de entorno
-const SECRET_KEY = process.env.JWT_SECRET || 'test-secret-key';
-const TOKEN_EXPIRY = '24h';
-
-// ==================== MOCK DATABASE ====================
-// En producción, esto estaría en MongoDB, PostgreSQL, etc.
-interface User {
-  id: string;
-  email: string;
-  password: string; // Hash, nunca en texto plano
-  name: string;
-  role: 'user' | 'admin';
-}
-
-const users: User[] = [
-  { 
-    id: '1', 
-    email: 'alice@example.com', 
-    // Hash de 'password123' con bcrypt
-    password: '$2b$10$YourHashedPasswordHere',
-    name: 'Alice Smith',
-    role: 'admin'
-  },
-  { 
-    id: '2', 
-    email: 'bob@example.com', 
-    password: '$2b$10$AnotherHashedPassword',
-    name: 'Bob Johnson',
-    role: 'user'
-  },
-];
-
-// ==================== ENDPOINTS ====================
+import { NextFunction, Request, Response } from 'express';
+import { IUserModel } from '@/components/User/model';
+import HttpError from '@/config/error';
+import AuthService from './service';
+import app from '@/config/server/server';
 
 /**
- * POST /api/auth/login
+ * POST /v1/auth/login
  * Autentica usuario y retorna JWT token
  */
-authRouter.post('/login', async (req: Request, res: Response) => {
-  const { email, password } = req.body;
-
-  // Validación básica
-  if (!email || !password) {
-    return res.status(400).json({ 
-      error: 'Email and password required' 
-    });
-  }
-
-  // Buscar usuario por email
-  const user = users.find((u) => u.email === email);
-
-  if (!user) {
-    // No revelar si el email existe o no (seguridad)
-    return res.status(401).json({ 
-      error: 'Invalid credentials' 
-    });
-  }
-
-  // Verificar password con bcrypt
-  const isPasswordValid = await bcrypt.compare(password, user.password);
-
-  if (!isPasswordValid) {
-    return res.status(401).json({ 
-      error: 'Invalid credentials' 
-    });
-  }
-
-  // Generar JWT token
-  const token = jwt.sign(
-    { 
-      id: user.id, 
-      email: user.email,
-      role: user.role 
-    },
-    SECRET_KEY,
-    { expiresIn: TOKEN_EXPIRY }
-  );
-
-  // Retornar token y datos del usuario (SIN password)
-  res.json({ 
-    token,
-    user: { 
-      id: user.id, 
-      email: user.email,
-      name: user.name,
-      role: user.role
-    } 
-  });
-});
-
-/**
- * POST /api/auth/register
- * Registra nuevo usuario
- */
-authRouter.post('/register', async (req: Request, res: Response) => {
-  const { email, password, name } = req.body;
-
-  // Validaciones
-  if (!email || !password || !name) {
-    return res.status(400).json({ 
-      error: 'Email, password, and name required' 
-    });
-  }
-
-  if (password.length < 8) {
-    return res.status(400).json({ 
-      error: 'Password must be at least 8 characters' 
-    });
-  }
-
-  // Verificar si el usuario ya existe
-  if (users.find(u => u.email === email)) {
-    return res.status(409).json({ 
-      error: 'Email already exists' 
-    });
-  }
-
-  // Hash del password
-  const hashedPassword = await bcrypt.hash(password, 10);
-
-  // Crear nuevo usuario
-  const newUser: User = {
-    id: Date.now().toString(),
-    email,
-    password: hashedPassword,
-    name,
-    role: 'user', // Por defecto
-  };
-
-  users.push(newUser);
-
-  // Generar token para el nuevo usuario
-  const token = jwt.sign(
-    { id: newUser.id, email: newUser.email, role: newUser.role },
-    SECRET_KEY,
-    { expiresIn: TOKEN_EXPIRY }
-  );
-
-  res.status(201).json({
-    token,
-    user: {
-      id: newUser.id,
-      email: newUser.email,
-      name: newUser.name,
-      role: newUser.role,
-    },
-  });
-});
-
-/**
- * POST /api/auth/verify
- * Verifica si un token es válido
- */
-authRouter.post('/verify', (req: Request, res: Response) => {
-  const { token } = req.body;
-
-  if (!token) {
-    return res.status(400).json({ error: 'Token required' });
-  }
-
+export async function login(
+  req: Request, 
+  res: Response, 
+  next: NextFunction
+): Promise<void> {
   try {
-    const decoded = jwt.verify(token, SECRET_KEY);
-    res.json({ valid: true, user: decoded });
+    // 1. Validar credenciales con AuthService
+    const userModel: IUserModel = await AuthService.getUser(req.body);
+
+    // 2. Generar JWT token
+    const token: string = jwt.sign(
+      { id: userModel._id, email: userModel.email },
+      app.get('secret'),  // Secret key desde config
+      { expiresIn: '60m' }
+    );
+
+    // 3. Retornar token en header y body
+    res
+      .status(HttpStatus.OK)
+      .header({ Authorization: token })
+      .send({ token: token });
+      
   } catch (error) {
-    res.status(401).json({ valid: false, error: 'Invalid token' });
+    if (error.code === 500) {
+      return next(new HttpError(error.message.status, error.message));
+    }
+    res.status(HttpStatus.BAD_REQUEST).send({
+      message: 'Invalid Login'
+    });
   }
+}
+```
+
+**Puntos clave**:
+- Token se genera con `jwt.sign()` usando secret del servidor
+- Expiración de 60 minutos
+- Token se retorna en header **y** body
+- Manejo de errores con HttpError personalizado
+
+### Service: api/src/components/Auth/service.ts
+
+El service contiene la lógica de negocio: validación, comparación de passwords, creación de usuarios:
+
+```typescript
+import Joi from 'joi';
+import AuthValidation from './validation';
+import UserModel, { IUserModel } from '@/components/User/model';
+
+const AuthService = {
+  /**
+   * Autentica usuario con email y password
+   */
+  async getUser(body: IUserModel): Promise<IUserModel> {
+    // 1. Validar con Joi
+    const validate = AuthValidation.getUser(body);
+    if (validate.error) {
+      throw new Error(validate.error.message);
+    }
+
+    // 2. Buscar usuario por email
+    const user: IUserModel = await UserModel.findOne({
+      email: body.email
+    });
+
+    // 3. Comparar password con bcrypt (método del model)
+    const isMatched = user && (await user.comparePassword(body.password));
+
+    if (isMatched) {
+      return user;
+    }
+
+    throw new Error('Invalid password or email');
+  }
+};
+
+export default AuthService;
+```
+
+**Arquitectura en capas**:
+1. **Validación con Joi**: Formato de email, campos requeridos
+2. **Lógica de negocio**: Buscar usuario, comparar passwords
+3. **Mongoose**: Interacción con MongoDB
+
+### Validation: api/src/components/Auth/validation.ts
+
+```typescript
+import Joi from 'joi';
+
+class AuthValidation {
+  /**
+   * Valida datos para login
+   */
+  getUser(params: any): Joi.ValidationResult {
+    const schema = Joi.object().keys({
+      password: Joi.string().required(),
+      email: Joi.string()
+        .email({ minDomainSegments: 2 })
+        .required()
+    });
+
+    return schema.validate(params);
+  }
+}
+
+export default new AuthValidation();
+```
+
+**Validaciones con Joi**:
+- Email con formato válido (mínimo 2 segmentos de dominio)
+- Password requerido
+- Campos obligatorios
+
+### Cómo funciona comparePassword en el Model
+
+El User model de Mongoose tiene un método `comparePassword` que usa bcrypt:
+
+```typescript
+// api/src/components/User/model.ts (simplificado)
+import bcrypt from 'bcrypt';
+import mongoose from 'mongoose';
+
+const UserSchema = new mongoose.Schema({
+  email: { type: String, required: true, unique: true },
+  password: { type: String, required: true, select: false }
 });
 
-export { authRouter };
+// Hash password antes de guardar
+UserSchema.pre('save', async function(next) {
+  if (!this.isModified('password')) return next();
+  
+  const salt = await bcrypt.genSalt(10);
+  this.password = await bcrypt.hash(this.password, salt);
+  next();
+});
+
+// Método para comparar passwords
+UserSchema.methods.comparePassword = async function(
+  candidatePassword: string
+): Promise<boolean> {
+  return bcrypt.compare(candidatePassword, this.password);
+};
+
+export default mongoose.model('User', UserSchema);
 ```
 
-### Análisis de seguridad
+**Seguridad automática**:
+- Password se hashea automáticamente con `pre('save')`
+- `select: false` evita que el password se retorne en queries por defecto
+- `comparePassword` encapsula la lógica de bcrypt
 
-Este código implementa **best practices de seguridad**:
 
-#### 1. Nunca almacenar passwords en texto plano
+
+## Best Practices de Seguridad Implementadas
+
+### 1. Passwords Hasheados Automáticamente
 
 ```typescript
-// ❌ MAL: Password visible
-const user = { password: 'password123' };
-
-// ✅ BIEN: Password hasheado con bcrypt
-const hashedPassword = await bcrypt.hash(password, 10);
-const user = { password: hashedPassword };
+// ✅ El model hashea el password antes de guardar
+UserSchema.pre('save', async function(next) {
+  if (!this.isModified('password')) return next();
+  this.password = await bcrypt.hash(this.password, 10);
+});
 ```
 
-#### 2. Mensajes de error genéricos
+### 2. Mensajes de Error Genéricos
 
 ```typescript
+// ✅ No revela si el problema es email o password
+throw new Error('Invalid password or email');
+
 // ❌ MAL: Revela información
-if (!user) return res.json({ error: 'Email not found' });
-if (!validPassword) return res.json({ error: 'Wrong password' });
-
-// ✅ BIEN: Mensaje genérico
-return res.status(401).json({ error: 'Invalid credentials' });
+if (!user) throw new Error('Email not found');
+if (!isMatched) throw new Error('Wrong password');
 ```
 
 Esto previene **user enumeration attacks** (adivinar qué emails existen).
 
-#### 3. Tokens con expiración
+### 3. Tokens con Expiración
 
 ```typescript
-jwt.sign(payload, SECRET_KEY, { expiresIn: '24h' });
+jwt.sign(
+  { id: userModel._id, email: userModel.email },
+  app.get('secret'),
+  { expiresIn: '60m' }  // Token expira en 1 hora
+);
 ```
 
-Los tokens expiran automáticamente, limitando el daño si se roban.
-
-#### 4. No retornar password en response
+### 4. Password No se Retorna en Queries
 
 ```typescript
-// ❌ MAL
-res.json({ user }); // Incluye password hash
-
-// ✅ BIEN
-res.json({ 
-  user: { id: user.id, email: user.email, name: user.name } 
-});
+// En el schema de Mongoose
+password: { type: String, required: true, select: false }
 ```
 
+Con `select: false`, el password **nunca** se incluye automáticamente en las queries.
 
 
-## Middleware de Autenticación
-
-### authMiddleware.ts
-
-```typescript
-import { Request, Response, NextFunction } from 'express';
-import jwt from 'jsonwebtoken';
-
-const SECRET_KEY = 'test-secret';
-
-export interface AuthRequest extends Request {
-  user?: { id: string; email: string };
-}
-
-export function authMiddleware(
-  req: AuthRequest,
-  res: Response,
-  next: NextFunction
-) {
-  const authHeader = req.headers.authorization;
-
-  if (!authHeader || !authHeader.startsWith('Bearer ')) {
-    return res.status(401).json({ error: 'No token provided' });
-  }
-
-  const token = authHeader.substring(7); // Remove 'Bearer '
-
-  try {
-    const decoded = jwt.verify(token, SECRET_KEY) as {
-      id: string;
-      email: string;
-    };
-    req.user = decoded;
-    next();
-  } catch (error) {
-    return res.status(401).json({ error: 'Invalid token' });
-  }
-}
-```
 
 ## Tests de Autenticación
 
-### authRouter.test.ts
+Ahora vamos a testear el sistema de autenticación completo usando MongoDB Memory Server.
+
+### Setup: api/src/tests/Auth.integration.test.ts
 
 ```typescript
 import request from 'supertest';
-import express from 'express';
-import { authRouter } from '../authRouter';
+import mongoose from 'mongoose';
+import { Server } from '../../config/server/server';
+import { UserModel } from '../../components/User/model';
+import { clearDatabase } from '../db-helper';
 
-function createApp() {
-  const app = express();
-  app.use(express.json());
-  app.use('/api/auth', authRouter);
-  return app;
-}
+describe('Auth API Integration Tests', () => {
+  let app: any;
 
-describe('POST /api/auth/login', () => {
-  let app: express.Application;
-
-  beforeEach(() => {
-    app = createApp();
+  beforeAll(async () => {
+    await mongoose.connect(process.env.MONGO_URI!);
+    const serverInstance = new Server();
+    app = serverInstance.app;
   });
 
-  it('debe hacer login con credenciales válidas', async () => {
-    const response = await request(app)
-      .post('/api/auth/login')
-      .send({
-        email: 'alice@example.com',
-        password: 'password123',
-      })
-      .expect(200);
+  beforeEach(async () => {
+    await clearDatabase();
+  });
 
-    expect(response.body).toHaveProperty('token');
-    expect(response.body.user).toEqual({
-      id: '1',
-      email: 'alice@example.com',
+  afterAll(async () => {
+    await mongoose.connection.close();
+  });
+
+  // ==================== POST /v1/auth/login ====================
+  
+  describe('POST /v1/auth/login', () => {
+    it('debe hacer login con credenciales válidas', async () => {
+      // Arrange: Crear usuario en MongoDB
+      await UserModel.create({
+        email: 'alice@example.com',
+        password: 'password123'
+      });
+
+      // Act: Intentar login
+      const response = await request(app)
+        .post('/v1/auth/login')
+        .send({
+          email: 'alice@example.com',
+          password: 'password123'
+        })
+        .expect(200);
+
+      // Assert: Verificar token y estructura
+      expect(response.body).toHaveProperty('token');
+      expect(typeof response.body.token).toBe('string');
+      expect(response.body.token.length).toBeGreaterThan(0);
+      
+      // Verificar que el token está en el header
+      expect(response.headers.authorization).toBeDefined();
+    });
+
+    it('debe rechazar credenciales inválidas', async () => {
+      // Crear usuario
+      await UserModel.create({
+        email: 'alice@example.com',
+        password: 'password123'
+      });
+
+      // Intentar login con password incorrecta
+      const response = await request(app)
+        .post('/v1/auth/login')
+        .send({
+          email: 'alice@example.com',
+          password: 'wrongpassword'
+        })
+        .expect(400);
+
+      expect(response.body.message).toBe('Invalid Login');
+    });
+
+    it('debe rechazar email que no existe', async () => {
+      const response = await request(app)
+        .post('/v1/auth/login')
+        .send({
+          email: 'nonexistent@example.com',
+          password: 'password123'
+        })
+        .expect(400);
+
+      expect(response.body.message).toBe('Invalid Login');
+    });
+
+    it('debe validar campos requeridos con Joi', async () => {
+      // Sin email
+      let response = await request(app)
+        .post('/v1/auth/login')
+        .send({ password: 'password123' })
+        .expect(400);
+
+      expect(response.body.message).toContain('email');
+
+      // Sin password
+      response = await request(app)
+        .post('/v1/auth/login')
+        .send({ email: 'test@example.com' })
+        .expect(400);
+
+      expect(response.body.message).toContain('password');
+    });
+
+    it('debe validar formato de email con Joi', async () => {
+      const response = await request(app)
+        .post('/v1/auth/login')
+        .send({
+          email: 'invalid-email',
+          password: 'password123'
+        })
+        .expect(400);
+
+      expect(response.body.message).toContain('email');
     });
   });
 
-  it('debe rechazar credenciales inválidas', async () => {
-    const response = await request(app)
-      .post('/api/auth/login')
-      .send({
-        email: 'alice@example.com',
-        password: 'wrongpassword',
-      })
-      .expect(401);
+  // ==================== TEST DE TOKENS JWT ====================
+  
+  describe('JWT Token Generation', () => {
+    it('debe generar token válido que contiene user data', async () => {
+      // Crear usuario
+      await UserModel.create({
+        email: 'tokentest@example.com',
+        password: 'password123'
+      });
 
-    expect(response.body.error).toBe('Invalid credentials');
-  });
+      // Login
+      const response = await request(app)
+        .post('/v1/auth/login')
+        .send({
+          email: 'tokentest@example.com',
+          password: 'password123'
+        });
 
-  it('debe requerir email y password', async () => {
-    const response = await request(app)
-      .post('/api/auth/login')
-      .send({ email: 'alice@example.com' })
-      .expect(400);
+      const { token } = response.body;
 
-    expect(response.body.error).toBe('Email and password required');
-  });
-});
-```
+      // Decodificar token (sin verificar, solo para inspeccionar)
+      const jwt = require('jsonwebtoken');
+      const decoded = jwt.decode(token);
 
-## Tests de Rutas Protegidas
+      expect(decoded).toHaveProperty('id');
+      expect(decoded).toHaveProperty('email', 'tokentest@example.com');
+      expect(decoded).toHaveProperty('exp'); // Expiration time
+    });
 
-### protectedRoutes.test.ts
+    it('debe generar token con expiración de 60 minutos', async () => {
+      // Crear usuario y hacer login
+      await UserModel.create({
+        email: 'expiry@example.com',
+        password: 'password123'
+      });
 
-```typescript
-import request from 'supertest';
-import express from 'express';
-import jwt from 'jsonwebtoken';
-import { authMiddleware, AuthRequest } from '../authMiddleware';
+      const response = await request(app)
+        .post('/v1/auth/login')
+        .send({
+          email: 'expiry@example.com',
+          password: 'password123'
+        });
 
-const SECRET_KEY = 'test-secret';
+      const jwt = require('jsonwebtoken');
+      const decoded = jwt.decode(response.body.token);
 
-function createApp() {
-  const app = express();
-  app.use(express.json());
-
-  // Protected route
-  app.get('/api/profile', authMiddleware, (req: AuthRequest, res) => {
-    res.json({ user: req.user });
-  });
-
-  return app;
-}
-
-describe('Protected Routes', () => {
-  let app: express.Application;
-
-  beforeEach(() => {
-    app = createApp();
-  });
-
-  it('debe acceder con token válido', async () => {
-    const token = jwt.sign(
-      { id: '1', email: 'alice@example.com' },
-      SECRET_KEY,
-      { expiresIn: '1h' }
-    );
-
-    const response = await request(app)
-      .get('/api/profile')
-      .set('Authorization', `Bearer ${token}`)
-      .expect(200);
-
-    expect(response.body.user).toEqual({
-      id: '1',
-      email: 'alice@example.com',
+      // Verificar que el token expira en ~60 minutos
+      const now = Math.floor(Date.now() / 1000);
+      const expiresIn = decoded.exp - now;
+      
+      // Debe expirar entre 59 y 61 minutos (con margen)
+      expect(expiresIn).toBeGreaterThan(59 * 60);
+      expect(expiresIn).toBeLessThan(61 * 60);
     });
   });
-
-  it('debe rechazar sin token', async () => {
-    const response = await request(app)
-      .get('/api/profile')
-      .expect(401);
-
-    expect(response.body.error).toBe('No token provided');
-  });
-
-  it('debe rechazar token inválido', async () => {
-    const response = await request(app)
-      .get('/api/profile')
-      .set('Authorization', 'Bearer invalid-token')
-      .expect(401);
-
-    expect(response.body.error).toBe('Invalid token');
-  });
 });
 ```
 
-## Test de Flujo Completo
+### Análisis de los Tests
+
+#### 1. **Tests de Login**
 
 ```typescript
-describe('Full Auth Flow', () => {
-  let app: express.Application;
-
-  beforeEach(() => {
-    app = createApp(); // App with auth routes and protected routes
-  });
-
-  it('debe completar flujo login -> acceso -> logout', async () => {
-    // 1. Login
-    const loginResponse = await request(app)
-      .post('/api/auth/login')
-      .send({
-        email: 'alice@example.com',
-        password: 'password123',
-      })
-      .expect(200);
-
-    const { token } = loginResponse.body;
-
-    // 2. Access protected resource
-    await request(app)
-      .get('/api/profile')
-      .set('Authorization', `Bearer ${token}`)
-      .expect(200);
-
-    // 3. Access another protected resource
-    await request(app)
-      .get('/api/data')
-      .set('Authorization', `Bearer ${token}`)
-      .expect(200);
-  });
+it('debe hacer login con credenciales válidas', async () => {
+  // Crear usuario real en MongoDB
+  await UserModel.create({ email, password });
+  
+  // Verificar que retorna token
+  expect(response.body).toHaveProperty('token');
+  
+  // Verificar que está en header también
+  expect(response.headers.authorization).toBeDefined();
 });
 ```
+
+**Por qué es importante**: Verifica que el flujo completo funciona (creación de usuario → hashing de password → comparación → generación de token).
+
+#### 2. **Tests de Seguridad**
+
+```typescript
+it('debe rechazar credenciales inválidas', async () => {
+  // Mensaje genérico: no revela si es email o password
+  expect(response.body.message).toBe('Invalid Login');
+});
+
+it('debe rechazar email que no existe', async () => {
+  // Mismo mensaje: previene user enumeration
+  expect(response.body.message).toBe('Invalid Login');
+});
+```
+
+**Seguridad verificada**: Ambos casos retornan el mismo error genérico.
+
+#### 3. **Tests de Validación**
+
+```typescript
+it('debe validar formato de email con Joi', async () => {
+  // Joi rechaza antes de llegar a la base de datos
+  expect(response.body.message).toContain('email');
+});
+```
+
+**Validación en capas**: Joi valida primero, luego Mongoose, luego lógica de negocio.
+
+#### 4. **Tests de Tokens JWT**
+
+```typescript
+it('debe generar token válido que contiene user data', async () => {
+  const decoded = jwt.decode(token);
+  expect(decoded).toHaveProperty('id');
+  expect(decoded).toHaveProperty('email');
+  expect(decoded).toHaveProperty('exp');
+});
+```
+
+**Verificación completa**: Verifica estructura del token, datos incluidos, y expiración.
+
+
+
+## Resumen
+
+En esta sección aprendimos a testear autenticación con:
+
+1. **JWT Tokens**: Generación, validación, expiración
+2. **bcrypt**: Hashing automático de passwords en Mongoose
+3. **Joi**: Validación de credenciales (email formato, campos requeridos)
+4. **MongoDB Memory Server**: Tests con base de datos real en memoria
+5. **Best Practices de Seguridad**:
+   - Mensajes de error genéricos
+   - Passwords nunca en texto plano
+   - Tokens con expiración
+   - Password no se retorna en queries
+
+:::tip Tests de Seguridad
+
+Los tests de autenticación son **críticos** para la seguridad:
+- Verifican que passwords se hashean correctamente
+- Validan que tokens expiran
+- Confirman que credenciales inválidas son rechazadas
+- Detectan vulnerabilidades de seguridad temprano
+
+:::
+
+:::info Próximo paso
+
+En la siguiente sección veremos **testing de hooks personalizados** en React, como `useAuth` que consume estos endpoints de autenticación.
+
+:::

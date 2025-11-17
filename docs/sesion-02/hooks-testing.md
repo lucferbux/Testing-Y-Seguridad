@@ -74,601 +74,646 @@ await waitFor(() => {
 
 
 
-## Ejemplo Básico: useCounter Hook
+## Análisis de Hooks del Proyecto: Taller-Testing-Security
 
-Comenzamos con un hook simple para entender los conceptos fundamentales. `useCounter` es un hook que gestiona un contador con operaciones básicas: incrementar, decrementar, resetear y establecer un valor específico.
+Vamos a testear los custom hooks reales del proyecto **Taller-Testing-Security** ubicados en `ui/src/hooks/`. Este proyecto tiene 5 hooks personalizados:
 
-### ¿Por qué useCounter es un buen primer ejemplo?
+### Estructura de Hooks del Proyecto
 
-- **Fácil de entender**: La lógica es simple y predecible
-- **Introduce conceptos clave**: `renderHook`, `act`, `result.current`
-- **Sin dependencias externas**: No hay API calls, Context ni efectos complejos
-- **Útil en producción**: Muchas apps necesitan contadores (paginación, likes, carritos, etc.)
-
-### Código: src/hooks/useCounter.ts
-
-```typescript
-import { useState, useCallback } from 'react';
-
-export function useCounter(initialValue: number = 0) {
-  // Estado interno del contador
-  const [count, setCount] = useState(initialValue);
-
-  // useCallback previene recreación innecesaria de funciones
-  // Optimiza rendimiento si pasamos estas funciones como props
-  const increment = useCallback(() => {
-    setCount(c => c + 1); // Usamos función updater para evitar stale closures
-  }, []);
-
-  const decrement = useCallback(() => {
-    setCount(c => c - 1);
-  }, []);
-
-  const reset = useCallback(() => {
-    setCount(initialValue); // Resetea al valor inicial, no a 0
-  }, [initialValue]); // Dependencia: se recrea si initialValue cambia
-
-  const setValue = useCallback((value: number) => {
-    setCount(value);
-  }, []);
-
-  // Retornamos un objeto con estado y acciones
-  return {
-    count,
-    increment,
-    decrement,
-    reset,
-    setValue,
-  };
-}
+```
+ui/src/hooks/
+├── useAuth.ts                    # Hook para acceder a AuthContext
+├── useProject.ts                 # Hook para acceder a ProjectContext  
+├── useFetchData.ts               # Hook genérico para fetch de datos
+├── useCreateOrUpdateProject.ts   # Hook para crear/actualizar proyectos
+└── useToogle.ts                  # Hook para toggle de boolean
 ```
 
-### Análisis del diseño
+**Complejidad por tipo**:
 
-Este hook demuestra **buenas prácticas**:
+| Hook | Tipo | Depende de | Complejidad |
+|------|------|-----------|-------------|
+| `useAuth` | Context wrapper | AuthContext | Baja |
+| `useProject` | Context wrapper | ProjectContext | Baja |
+| `useToogle` | State management | Ninguno | Baja |
+| `useFetchData` | Async + Effects | API fetch | Media |
+| `useCreateOrUpdate` | Async + State | API mutation | Media |
 
-1. **Parámetro por defecto**: `initialValue = 0` hace el hook más flexible
-2. **useCallback**: Optimiza rendimiento memorizando funciones
-3. **Función updater**: `setCount(c => c + 1)` previene bugs de closures
-4. **API consistente**: Todas las acciones siguen el mismo patrón
-5. **TypeScript**: Tipos explícitos previenen errores
+### React Hooks Testing Library
 
-### Test: src/hooks/tests/useCounter.test.ts
+Para testear hooks necesitamos `renderHook` que está incluido en React Testing Library v13+:
 
-```typescript
-import { renderHook, act } from '@testing-library/react';
-import { useCounter } from '../useCounter';
-
-describe('useCounter', () => {
-  
-  it('debe iniciar con valor por defecto 0', () => {
-    // renderHook ejecuta el hook y retorna un objeto con 'result'
-    const { result } = renderHook(() => useCounter());
-    
-    // result.current contiene el valor actual retornado por el hook
-    expect(result.current.count).toBe(0);
-  });
-
-  it('debe iniciar con valor inicial personalizado', () => {
-    // Pasamos props al hook a través de la función
-    const { result } = renderHook(() => useCounter(10));
-    expect(result.current.count).toBe(10);
-  });
-
-  it('debe incrementar contador', () => {
-    const { result } = renderHook(() => useCounter());
-    
-    // act() es necesario para cambios de estado
-    // Garantiza que React procese el update antes de continuar
-    act(() => {
-      result.current.increment();
-    });
-    
-    expect(result.current.count).toBe(1);
-  });
-
-  it('debe decrementar contador', () => {
-    const { result } = renderHook(() => useCounter(5));
-    
-    act(() => {
-      result.current.decrement();
-    });
-    
-    expect(result.current.count).toBe(4);
-  });
-
-  it('debe resetear a valor inicial', () => {
-    const { result } = renderHook(() => useCounter(10));
-    
-    // Podemos hacer múltiples acciones dentro de un solo act
-    act(() => {
-      result.current.increment();
-      result.current.increment();
-    });
-    
-    expect(result.current.count).toBe(12);
-    
-    // Ahora reseteamos
-    act(() => {
-      result.current.reset();
-    });
-    
-    // Debe volver a 10 (el initial value), no a 0
-    expect(result.current.count).toBe(10);
-  });
-
-  it('debe establecer valor específico', () => {
-    const { result } = renderHook(() => useCounter());
-    
-    act(() => {
-      result.current.setValue(42);
-    });
-    
-    expect(result.current.count).toBe(42);
-  });
-
-  it('debe manejar múltiples operaciones secuenciales', () => {
-    const { result } = renderHook(() => useCounter(0));
-    
-    act(() => {
-      result.current.increment(); // 0 → 1
-      result.current.increment(); // 1 → 2
-      result.current.increment(); // 2 → 3
-      result.current.decrement(); // 3 → 2
-      result.current.setValue(10); // 2 → 10
-    });
-    
-    expect(result.current.count).toBe(10);
-  });
-});
+```bash
+npm install --save-dev @testing-library/react @testing-library/jest-dom
 ```
 
-### Desglose de patrones de testing
+### Conceptos Clave
 
-#### 1. Estructura básica de test de hook
+**`renderHook`**: Renderiza un hook en un componente test especial
 
 ```tsx
-// ✅ Patrón correcto
-const { result } = renderHook(() => useCounter());
-expect(result.current.count).toBe(0);
-
-// ❌ NO puedes hacer esto
-const counter = useCounter(); // Error: Hooks solo funcionan en componentes
+const { result } = renderHook(() => useAuth());
+// result.current contiene el valor retornado por el hook
 ```
 
-#### 2. Cuándo usar `act`
+**`act`**: Envuelve actualizaciones de estado
 
 ```tsx
-// ✅ Necesario: cuando cambias estado
 act(() => {
-  result.current.increment();
-});
-
-// ❌ NO necesario: cuando solo lees estado
-expect(result.current.count).toBe(0); // Sin act, solo lectura
-```
-
-#### 3. Testear valores iniciales
-
-```tsx
-// Patrón: renderizar con diferentes props
-const { result: result1 } = renderHook(() => useCounter(0));
-const { result: result2 } = renderHook(() => useCounter(100));
-
-expect(result1.current.count).toBe(0);
-expect(result2.current.count).toBe(100);
-```
-
-:::tip Best Practice
-Agrupa tests relacionados en describe blocks para mejor organización:
-
-```tsx
-describe('useCounter', () => {
-  describe('initialization', () => {
-    // Tests de valores iniciales
-  });
-  
-  describe('increment/decrement', () => {
-    // Tests de operaciones
-  });
+  result.current.toggle();
 });
 ```
-:::
+
+**`waitFor`**: Espera hasta que una condición se cumpla (útil para async)
+
+```tsx
+await waitFor(() => {
+  expect(result.current.isLoading).toBe(false);
+});
+```
 
 
 
-## Ejemplo Avanzado: useFetch Hook
+## Ejemplo 1: useAuth Hook (Context Wrapper)
 
-Ahora vamos a un caso más realista y complejo: un hook que hace fetching de datos desde una API. Este ejemplo introduce conceptos avanzados como:
-- **Efectos secundarios** (useEffect)
-- **Operaciones asíncronas** (fetch)
-- **Manejo de errores** (try/catch)
-- **Cleanup** (cancelación de requests)
-- **Refetching** (recargar datos)
+Comenzamos con el hook más simple: `useAuth` solo accede a `AuthContext` y valida que se use dentro del Provider.
 
-Este tipo de hook es **extremadamente común** en aplicaciones reales. Entender cómo testearlo te preparará para la mayoría de casos de uso que encontrarás.
-
-### Código: src/hooks/useFetch.ts
+### Código Real: ui/src/hooks/useAuth.ts
 
 ```typescript
-import { useState, useEffect } from 'react';
+import { useContext } from 'react';
+import AuthContext from '../context/AuthContext';
 
-// Definimos la forma del resultado que retorna el hook
-interface UseFetchResult<T> {
-  data: T | null;        // Los datos obtenidos (null mientras carga)
-  loading: boolean;      // Indica si está cargando
-  error: Error | null;   // Error si hubo fallo (null si todo OK)
-  refetch: () => void;   // Función para recargar datos
+export default function useAuth() {
+  const context = useContext(AuthContext);
+
+  if (!context) {
+    throw new Error('useAuth must be used within an AuthProvider');
+  }
+
+  return context;
 }
+```
 
-export function useFetch<T>(url: string): UseFetchResult<T> {
+**Qué hace**:
+- Accede a `AuthContext` con `useContext`
+- Valida que el hook se use dentro de `<AuthProvider>`
+- Retorna el context completo (user, login, logout, etc.)
+
+### ¿Por Qué es un Buen Primer Ejemplo?
+
+- **Simple**: Solo 4 líneas de lógica
+- **Patrón común**: Casi todos los proyectos tienen wrappers de Context
+- **Introduce testing con Provider**: Necesitamos mockear el Context
+- **Validación de errores**: Testea el error cuando falta el Provider
+
+### Test: ui/src/hooks/__tests__/useAuth.test.tsx
+
+```typescript
+import { renderHook } from '@testing-library/react';
+import useAuth from '../useAuth';
+import AuthContext from '../../context/AuthContext';
+import { ReactNode } from 'react';
+
+describe('useAuth', () => {
+  it('debe retornar el contexto de autenticación', () => {
+    // Mock del valor del context
+    const mockContextValue = {
+      user: { id: '1', email: 'test@example.com' },
+      isLoading: false,
+      login: jest.fn(),
+      logout: jest.fn(),
+      loadUser: jest.fn()
+    };
+
+    // Wrapper que provee el Context
+    const wrapper = ({ children }: { children: ReactNode }) => (
+      <AuthContext.Provider value={mockContextValue}>
+        {children}
+      </AuthContext.Provider>
+    );
+
+    // Renderizar hook con el wrapper
+    const { result } = renderHook(() => useAuth(), { wrapper });
+
+    // Verificar que retorna el context completo
+    expect(result.current).toEqual(mockContextValue);
+    expect(result.current.user?.email).toBe('test@example.com');
+  });
+
+  it('debe lanzar error si se usa fuera del AuthProvider', () => {
+    // Sin wrapper (sin Provider)
+    expect(() => {
+      renderHook(() => useAuth());
+    }).toThrow('useAuth must be used within an AuthProvider');
+  });
+});
+```
+
+### Análisis del Test
+
+#### 1. **Testing con Wrapper Provider**
+
+```typescript
+// ✅ Patrón correcto para hooks que usan Context
+const wrapper = ({ children }) => (
+  <AuthContext.Provider value={mockValue}>
+    {children}
+  </AuthContext.Provider>
+);
+
+const { result } = renderHook(() => useAuth(), { wrapper });
+```
+
+**Por qué funciona**: `renderHook` acepta una opción `wrapper` que envuelve el hook en un componente. Esto simula el Provider real.
+
+#### 2. **Testing de Validación de Errores**
+
+```typescript
+// ✅ Verificar que lanza error
+expect(() => {
+  renderHook(() => useAuth());
+}).toThrow('useAuth must be used within an AuthProvider');
+```
+
+**Por qué es importante**: Previene bugs difíciles de debuggear cuando alguien usa el hook fuera del Provider.
+
+#### 3. **Mock del Context Value**
+
+```typescript
+const mockContextValue = {
+  user: { id: '1', email: 'test@example.com' },
+  isLoading: false,
+  login: jest.fn(),
+  logout: jest.fn(),
+  loadUser: jest.fn()
+};
+```
+
+**Ventajas**:
+- Control total sobre el estado del context
+- Podemos verificar que las funciones se llaman correctamente
+- No dependemos de la implementación real del AuthContext
+
+
+
+## Ejemplo 2: useFetchData Hook (Async + Effects)
+
+Ahora vamos a un caso más complejo: un hook genérico que hace fetch de datos con manejo de loading, errores y recarga.
+
+### Código Real: ui/src/hooks/useFetchData.ts
+
+```typescript
+import { useState, useEffect, useCallback } from 'react';
+import { GenericError } from '../api/api-client';
+
+type FetchDataResult<T> = {
+  data: T | null;
+  isLoading: boolean;
+  error: Error | GenericError | null;
+  reload: () => void;
+};
+
+export default function useFetchData<T>(
+  fetchFunction: () => Promise<T>
+): FetchDataResult<T> {
   const [data, setData] = useState<T | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<Error | null>(null);
-  
-  // Truco: incrementamos este índice para triggear refetch
-  const [refetchIndex, setRefetchIndex] = useState(0);
-
-  const refetch = () => {
-    setRefetchIndex(prev => prev + 1);
-  };
+  const [isLoading, setIsLoading] = useState<boolean>(true);
+  const [error, setError] = useState<Error | GenericError | null>(null);
+  const [reloadCount, setReloadCount] = useState<number>(0);
 
   useEffect(() => {
-    // Flag para prevenir updates después de que el componente se desmonte
-    let cancelled = false;
-
-    setLoading(true);
-    setError(null); // Limpiamos error anterior
-
-    fetch(url)
-      .then(res => {
-        if (!res.ok) {
-          throw new Error(`HTTP error! status: ${res.status}`);
-        }
-        return res.json();
-      })
-      .then(data => {
-        // Solo actualizamos si el componente sigue montado
-        if (!cancelled) {
-          setData(data);
-          setLoading(false);
-        }
-      })
-      .catch(err => {
-        if (!cancelled) {
+    const fetchData = async () => {
+      try {
+        const result = await fetchFunction();
+        setData(result);
+      } catch (err) {
+        if (err instanceof GenericError || err instanceof Error) {
           setError(err);
-          setLoading(false);
         }
-      });
-
-    // Cleanup: marca como cancelado si el componente se desmonta
-    // Esto previene el warning "Can't perform a React state update on an unmounted component"
-    return () => {
-      cancelled = true;
+      } finally {
+        setIsLoading(false);
+      }
     };
-  }, [url, refetchIndex]); // Re-ejecuta si cambia la URL o si llamamos refetch()
 
-  return { data, loading, error, refetch };
+    fetchData();
+  }, [fetchFunction, reloadCount]);
+
+  const reload = useCallback(() => {
+    setReloadCount((prevCount) => prevCount + 1);
+  }, []);
+
+  return { data, isLoading, error, reload };
 }
 ```
 
-### Análisis de patrones avanzados
+**Características**:
+- **Genérico**: Funciona con cualquier tipo de datos `<T>`
+- **Loading state**: `isLoading` mientras hace fetch
+- **Error handling**: Captura errores de la API
+- **Reload**: Función para refetch manual
+- **useEffect**: Se ejecuta automáticamente y cuando cambia `reloadCount`
 
-Este hook demuestra **técnicas críticas** para hooks de producción:
-
-#### 1. Manejo de Race Conditions
-
-```tsx
-let cancelled = false;
-
-// ... fetch ...
-
-if (!cancelled) {
-  setData(data); // Solo actualiza si no se canceló
-}
-
-return () => {
-  cancelled = true; // Marca como cancelado en cleanup
-};
-```
-
-**¿Por qué importa?**: Si el componente se desmonta mientras el fetch está en progreso, intentar actualizar estado causaría un error. El flag `cancelled` lo previene.
-
-#### 2. Estado de carga y errores
-
-```tsx
-// Antes de fetch
-setLoading(true);
-setError(null); // ¡Importante! Limpia errores previos
-
-// Si hay error
-setError(err);
-setLoading(false);
-
-// Si hay éxito
-setData(data);
-setLoading(false);
-```
-
-Esto permite mostrar **feedback visual preciso** al usuario: spinners, mensajes de error, etc.
-
-#### 3. Refetch pattern
-
-```tsx
-const [refetchIndex, setRefetchIndex] = useState(0);
-
-const refetch = () => {
-  setRefetchIndex(prev => prev + 1); // Incrementa para triggear useEffect
-};
-
-useEffect(() => {
-  // ... fetch ...
-}, [url, refetchIndex]); // Dependencia en refetchIndex
-```
-
-Elegante solución para refrescar datos sin necesidad de props o Context adicional.
-
-### Test: src/hooks/tests/useFetch.test.ts
+### Test: ui/src/hooks/\_\_tests\_\_/useFetchData.test.tsx
 
 ```typescript
 import { renderHook, waitFor } from '@testing-library/react';
-import { useFetch } from '../useFetch';
+import useFetchData from '../useFetchData';
+import { GenericError } from '../../api/api-client';
 
-// Mock global fetch - reemplazamos fetch del navegador con una versión mockeada
-global.fetch = jest.fn();
-
-describe('useFetch', () => {
-  
-  // Limpiamos el mock antes de cada test para evitar interferencias
-  beforeEach(() => {
-    (fetch as jest.Mock).mockClear();
-  });
-
-  it('debe retornar datos exitosamente', async () => {
-    // Preparamos datos mock
-    const mockData = { id: 1, name: 'Test' };
-    
-    // Configuramos fetch para retornar estos datos
-    (fetch as jest.Mock).mockResolvedValueOnce({
-      ok: true,
-      json: async () => mockData,
+describe('useFetchData', () => {
+  it('debe cargar datos exitosamente', async () => {
+    // Mock de función fetch que retorna datos
+    const mockFetch = jest.fn().mockResolvedValue({
+      id: 1,
+      title: 'Test Project'
     });
 
-    const { result } = renderHook(() => useFetch('/api/test'));
+    const { result } = renderHook(() => useFetchData(mockFetch));
 
-    // Estado inicial: loading true, data null
-    expect(result.current.loading).toBe(true);
+    // Estado inicial: loading
+    expect(result.current.isLoading).toBe(true);
     expect(result.current.data).toBeNull();
-
-    // Esperamos a que termine el fetch
-    await waitFor(() => {
-      expect(result.current.loading).toBe(false);
-    });
-
-    // Verificamos que tenemos los datos
-    expect(result.current.data).toEqual(mockData);
     expect(result.current.error).toBeNull();
+
+    // Esperar a que termine el fetch
+    await waitFor(() => {
+      expect(result.current.isLoading).toBe(false);
+    });
+
+    // Verificar datos cargados
+    expect(result.current.data).toEqual({
+      id: 1,
+      title: 'Test Project'
+    });
+    expect(result.current.error).toBeNull();
+    expect(mockFetch).toHaveBeenCalledTimes(1);
   });
 
-  it('debe manejar errores de red', async () => {
-    // Simulamos un error de red (fetch rechazado)
+  it('debe manejar errores de fetch', async () => {
+    // Mock que falla
     const mockError = new Error('Network error');
-    (fetch as jest.Mock).mockRejectedValueOnce(mockError);
+    const mockFetch = jest.fn().mockRejectedValue(mockError);
 
-    const { result } = renderHook(() => useFetch('/api/test'));
+    const { result } = renderHook(() => useFetchData(mockFetch));
 
-    // Esperamos a que termine (con error)
+    // Esperar a que termine
     await waitFor(() => {
-      expect(result.current.loading).toBe(false);
+      expect(result.current.isLoading).toBe(false);
     });
 
-    // Verificamos que tenemos el error
-    expect(result.current.error).toEqual(mockError);
+    // Verificar estado de error
     expect(result.current.data).toBeNull();
+    expect(result.current.error).toEqual(mockError);
   });
 
-  it('debe manejar errores HTTP', async () => {
-    // Simulamos un 404 (fetch exitoso pero respuesta con error)
-    (fetch as jest.Mock).mockResolvedValueOnce({
-      ok: false,
-      status: 404,
-    });
+  it('debe manejar GenericError de la API', async () => {
+    const genericError = new GenericError('API error', 500);
+    const mockFetch = jest.fn().mockRejectedValue(genericError);
 
-    const { result } = renderHook(() => useFetch('/api/test'));
+    const { result } = renderHook(() => useFetchData(mockFetch));
 
     await waitFor(() => {
-      expect(result.current.loading).toBe(false);
+      expect(result.current.isLoading).toBe(false);
     });
 
-    // Debe haber un error con información del status
-    expect(result.current.error).toBeTruthy();
-    expect(result.current.error?.message).toContain('404');
+    expect(result.current.error).toEqual(genericError);
   });
 
-  it('debe permitir refetch', async () => {
-    const mockData1 = { id: 1, name: 'First' };
-    const mockData2 = { id: 2, name: 'Second' };
+  it('debe permitir recargar datos con reload()', async () => {
+    let callCount = 0;
+    const mockFetch = jest.fn().mockImplementation(async () => {
+      callCount++;
+      return { id: callCount, title: `Project ${callCount}` };
+    });
 
-    // Configuramos fetch para retornar datos diferentes en cada llamada
-    (fetch as jest.Mock)
-      .mockResolvedValueOnce({
-        ok: true,
-        json: async () => mockData1,
-      })
-      .mockResolvedValueOnce({
-        ok: true,
-        json: async () => mockData2,
-      });
-
-    const { result } = renderHook(() => useFetch('/api/test'));
+    const { result } = renderHook(() => useFetchData(mockFetch));
 
     // Primera carga
     await waitFor(() => {
-      expect(result.current.data).toEqual(mockData1);
+      expect(result.current.isLoading).toBe(false);
     });
 
-    // Llamamos refetch
+    expect(result.current.data).toEqual({ id: 1, title: 'Project 1' });
+    expect(mockFetch).toHaveBeenCalledTimes(1);
+
+    // Recargar
     act(() => {
-      result.current.refetch();
+      result.current.reload();
     });
 
-    // Segunda carga - debe tener datos nuevos
     await waitFor(() => {
-      expect(result.current.data).toEqual(mockData2);
+      expect(result.current.data).toEqual({ id: 2, title: 'Project 2' });
     });
 
-    // Verificamos que fetch se llamó dos veces
-    expect(fetch).toHaveBeenCalledTimes(2);
+    expect(mockFetch).toHaveBeenCalledTimes(2);
   });
+});
+```
 
-  it('debe actualizar cuando cambia la URL', async () => {
-    const mockData1 = { id: 1, name: 'First' };
-    const mockData2 = { id: 2, name: 'Second' };
+### Análisis del Test
 
-    (fetch as jest.Mock)
-      .mockResolvedValueOnce({
-        ok: true,
-        json: async () => mockData1,
-      })
-      .mockResolvedValueOnce({
-        ok: true,
-        json: async () => mockData2,
-      });
+#### 1. **Testing de Estados Asíncronos con waitFor**
 
-    // Renderizamos con URL inicial
-    const { result, rerender } = renderHook(
-      ({ url }) => useFetch(url),
-      { initialProps: { url: '/api/test1' } }
+```typescript
+// Estado inicial
+expect(result.current.isLoading).toBe(true);
+
+// Esperar a que termine
+await waitFor(() => {
+  expect(result.current.isLoading).toBe(false);
+});
+```
+
+**Por qué `waitFor`**: Los hooks con `useEffect` y operaciones async no actualizan el estado instantáneamente. `waitFor` reintentalas assertion hasta que pase o timeout.
+
+#### 2. **Mock de Funciones Async**
+
+```typescript
+// ✅ Mock que resuelve exitosamente
+const mockFetch = jest.fn().mockResolvedValue({ data: 'test' });
+
+// ✅ Mock que falla
+const mockFetch = jest.fn().mockRejectedValue(new Error('Failed'));
+
+// ✅ Mock con lógica dinámica
+const mockFetch = jest.fn().mockImplementation(async () => {
+  callCount++;
+  return { id: callCount };
+});
+```
+
+#### 3. **Testing de Reload/Refetch**
+
+```typescript
+// Primera carga
+await waitFor(() => expect(result.current.isLoading).toBe(false));
+
+// Trigger reload
+act(() => {
+  result.current.reload();
+});
+
+// Verificar segunda carga
+await waitFor(() => {
+  expect(result.current.data).toEqual(newData);
+});
+```
+
+**Patrón importante**: `act()` para ejecutar la función + `waitFor()` para esperar el efecto.
+
+
+
+## Ejemplo 3: useCreateOrUpdate Hook (Mutations)
+
+Ahora vamos a testear un hook para **mutaciones** (crear/actualizar datos), que tiene un patrón diferente a fetch de datos.
+
+### Código Real: ui/src/hooks/useCreateOrUpdateProject.ts
+
+```typescript
+import { useState, useCallback } from 'react';
+import { ProjectResponse } from '../api/api-client';
+
+type UpdateResult<T> = {
+  createOrUpdate: (data: T, errorMessage?: string) => Promise<void>;
+  status: Status;
+  error: Error | undefined;
+};
+
+type Status = 'success' | 'loading' | undefined;
+
+export function useCreateOrUpdate<T>(
+  createOrUpdateFunction: (data: T) => Promise<ProjectResponse>
+): UpdateResult<T> {
+  const [status, setStatus] = useState<Status>(undefined);
+  const [error, setError] = useState<Error | undefined>(undefined);
+
+  const createOrUpdate = useCallback(
+    async (data: T, errorMessage?: string) => {
+      // Validación temprana con error custom
+      if (errorMessage) {
+        setError(new Error(errorMessage));
+        return;
+      }
+
+      setStatus('loading');
+      try {
+        await createOrUpdateFunction(data);
+        setStatus('success');
+      } catch (err) {
+        if (err instanceof Error) {
+          setError(err);
+        } else {
+          setError(new Error('Unknown error'));
+        }
+        setStatus(undefined);
+      }
+    },
+    [createOrUpdateFunction]
+  );
+
+  return { createOrUpdate, status, error };
+}
+```
+
+**Características**:
+- **Mutations**: Para crear/actualizar, no para fetch
+- **Status tracking**: `loading` → `success` o `undefined` (si error)
+- **Error handling**: Maneja errores de la API y custom
+- **useCallback**: Memoriza la función para evitar recreaciones
+
+### Test: ui/src/hooks/\_\_tests\_\_/useCreateOrUpdate.test.tsx
+
+```typescript
+import { renderHook, waitFor } from '@testing-library/react';
+import { useCreateOrUpdate } from '../useCreateOrUpdateProject';
+import { ProjectResponse } from '../../api/api-client';
+
+describe('useCreateOrUpdate', () => {
+  it('debe crear/actualizar exitosamente', async () => {
+    const mockResponse: ProjectResponse = {
+      _id: '123',
+      title: 'New Project',
+      description: 'Test'
+    };
+
+    const mockFunction = jest.fn().mockResolvedValue(mockResponse);
+
+    const { result } = renderHook(() => 
+      useCreateOrUpdate(mockFunction)
     );
 
-    await waitFor(() => {
-      expect(result.current.data).toEqual(mockData1);
+    // Estado inicial
+    expect(result.current.status).toBeUndefined();
+    expect(result.current.error).toBeUndefined();
+
+    // Ejecutar mutation
+    await act(async () => {
+      await result.current.createOrUpdate({
+        title: 'New Project',
+        description: 'Test'
+      });
     });
 
-    // Cambiamos la URL
-    rerender({ url: '/api/test2' });
-
-    // Debe fetchar con la nueva URL
-    await waitFor(() => {
-      expect(result.current.data).toEqual(mockData2);
+    // Verificar resultado
+    expect(result.current.status).toBe('success');
+    expect(result.current.error).toBeUndefined();
+    expect(mockFunction).toHaveBeenCalledWith({
+      title: 'New Project',
+      description: 'Test'
     });
-
-    expect(fetch).toHaveBeenCalledWith('/api/test1');
-    expect(fetch).toHaveBeenCalledWith('/api/test2');
   });
 
-  it('debe limpiar estado al desmontar', async () => {
-    const mockData = { id: 1, name: 'Test' };
-    
-    // Creamos una Promise que controlamos manualmente
-    let resolveFetch: (value: any) => void;
-    const fetchPromise = new Promise(resolve => {
-      resolveFetch = resolve;
-    });
-    
-    (fetch as jest.Mock).mockReturnValueOnce(fetchPromise);
+  it('debe establecer status "loading" durante la operación', async () => {
+    // Mock con delay para ver el loading state
+    const mockFunction = jest.fn().mockImplementation(
+      () => new Promise(resolve => setTimeout(() => resolve({}), 100))
+    );
 
-    const { result, unmount } = renderHook(() => useFetch('/api/test'));
+    const { result } = renderHook(() => 
+      useCreateOrUpdate(mockFunction)
+    );
 
-    // Verificamos que está loading
-    expect(result.current.loading).toBe(true);
-
-    // Desmontamos ANTES de que termine el fetch
-    unmount();
-
-    // Ahora resolvemos el fetch (simula respuesta tardía)
-    resolveFetch!({
-      ok: true,
-      json: async () => mockData,
+    // Iniciar operación sin esperar
+    act(() => {
+      result.current.createOrUpdate({ title: 'Test' });
     });
 
-    // Esperamos un poco para asegurar que no hay updates
-    await new Promise(resolve => setTimeout(resolve, 100));
+    // Verificar loading inmediatamente
+    expect(result.current.status).toBe('loading');
 
-    // Si hubo cleanup correcto, no hubo errores en consola
-    // (No podemos verificar directamente, pero el test pasará sin warnings)
+    // Esperar a que termine
+    await waitFor(() => {
+      expect(result.current.status).toBe('success');
+    });
+  });
+
+  it('debe manejar errores de la API', async () => {
+    const mockError = new Error('API Error');
+    const mockFunction = jest.fn().mockRejectedValue(mockError);
+
+    const { result } = renderHook(() => 
+      useCreateOrUpdate(mockFunction)
+    );
+
+    await act(async () => {
+      await result.current.createOrUpdate({ title: 'Test' });
+    });
+
+    expect(result.current.status).toBeUndefined();
+    expect(result.current.error).toEqual(mockError);
+  });
+
+  it('debe manejar errorMessage custom', async () => {
+    const mockFunction = jest.fn();
+
+    const { result } = renderHook(() => 
+      useCreateOrUpdate(mockFunction)
+    );
+
+    await act(async () => {
+      await result.current.createOrUpdate(
+        { title: 'Test' },
+        'Custom validation error'
+      );
+    });
+
+    // No debe llamar la función si hay errorMessage
+    expect(mockFunction).not.toHaveBeenCalled();
+    expect(result.current.error?.message).toBe('Custom validation error');
+    expect(result.current.status).toBeUndefined();
   });
 });
 ```
 
-### Técnicas clave de este test
+### Análisis del Test
 
-#### 1. Mockear fetch global
+#### 1. **Testing de Mutations vs Queries**
 
-```tsx
-global.fetch = jest.fn();
+```typescript
+// Queries (useFetchData): Se ejecutan automáticamente
+const { result } = renderHook(() => useFetchData(mockFetch));
+// Ya está fetching...
 
-beforeEach(() => {
-  (fetch as jest.Mock).mockClear(); // Limpia calls anteriores
+// Mutations (useCreateOrUpdate): Se ejecutan manualmente
+const { result } = renderHook(() => useCreateOrUpdate(mockFn));
+await act(async () => {
+  await result.current.createOrUpdate(data); // Manual
 });
 ```
 
-Esto reemplaza la función nativa `fetch` con una versión controlable.
+#### 2. **Testing de Loading State**
 
-#### 2. Simular respuestas diferentes
-
-```tsx
-// Respuesta exitosa
-(fetch as jest.Mock).mockResolvedValueOnce({
-  ok: true,
-  json: async () => mockData,
-});
-
-// Error de red
-(fetch as jest.Mock).mockRejectedValueOnce(new Error('Network error'));
-
-// Error HTTP
-(fetch as jest.Mock).mockResolvedValueOnce({
-  ok: false,
-  status: 404,
-});
-```
-
-#### 3. Testear cambios de props con `rerender`
-
-```tsx
-const { result, rerender } = renderHook(
-  ({ url }) => useFetch(url),
-  { initialProps: { url: '/api/test1' } }
+```typescript
+// Mock con delay para capturar loading
+const mockFunction = jest.fn().mockImplementation(
+  () => new Promise(resolve => setTimeout(() => resolve({}), 100))
 );
 
-// Cambiamos props
-rerender({ url: '/api/test2' });
+// Ejecutar sin await
+act(() => {
+  result.current.createOrUpdate(data);
+});
+
+// Verificar loading inmediatamente
+expect(result.current.status).toBe('loading');
 ```
 
-Esto simula cuando un componente recibe nuevas props y el hook debe reaccionar.
+#### 3. **Testing de Validación Custom**
 
-#### 4. Verificar cleanup con `unmount`
+```typescript
+await act(async () => {
+  await result.current.createOrUpdate(
+    data,
+    'Custom validation error' // Segundo parámetro
+  );
+});
 
-```tsx
-const { unmount } = renderHook(() => useFetch('/api/test'));
-
-// Desmontamos antes de que termine el fetch
-unmount();
-
-// Verificamos que no hay memory leaks ni warnings
+expect(mockFunction).not.toHaveBeenCalled();
+expect(result.current.error?.message).toBe('Custom validation error');
 ```
 
-:::warning Errores comunes
-1. **No usar `waitFor` con operaciones asíncronas**: Los tests fallan intermitentemente
-2. **No limpiar mocks entre tests**: Un test afecta a otro
-3. **No testear edge cases**: (error después de éxito, múltiples refetch, etc.)
-4. **No verificar estado de loading**: Solo testeas el resultado final, no el proceso
+
+
+## Resumen
+
+En esta sección aprendimos a testear custom hooks del proyecto Taller-Testing-Security:
+
+1. **useAuth**: Hook wrapper de Context con validación de Provider
+2. **useFetchData**: Hook genérico para fetch con loading/error states
+3. **useCreateOrUpdate**: Hook para mutations (crear/actualizar)
+
+### Conceptos Clave
+
+- **renderHook**: Ejecuta hooks en aislamiento
+- **act**: Envuelve actualizaciones de estado
+- **waitFor**: Espera condiciones asíncronas
+- **Wrapper Provider**: Necesario para hooks que usan Context
+- **Mock de funciones async**: `mockResolvedValue` y `mockRejectedValue`
+
+### Patrones de Testing
+
+| Patrón | Cuándo Usar | Ejemplo |
+|--------|-------------|---------|
+| `renderHook` básico | Hooks sin Context | `useToggle`, `useCounter` |
+| `renderHook` con wrapper | Hooks con Context | `useAuth`, `useProject` |
+| `waitFor` + async | Hooks con useEffect | `useFetchData` |
+| `act` + async | Mutations manuales | `useCreateOrUpdate` |
+| Mock con delay | Testear loading state | `setTimeout` en mock |
+
+:::tip Best Practices
+
+1. **Testea el comportamiento, no la implementación**: Verifica qué retorna el hook, no cómo lo hace internamente
+2. **Usa waitFor para async**: Nunca uses `setTimeout` en tests
+3. **Mock las dependencias**: API calls, Context values, etc.
+4. **Testea edge cases**: Errores, loading states, datos vacíos
+5. **Agrupa tests**: Usa `describe` blocks para organización
+
 :::
 
-## Resumen: Hooks Testing Best Practices
+:::info Próximo paso
 
-| Práctica | Razón | Ejemplo |
-|----------|-------|---------|
-| Usar `renderHook` | Hooks solo funcionan en componentes | `const { result } = renderHook(() => useCounter())` |
-| Usar `act` para updates | Sincroniza updates de React | `act(() => { result.current.increment() })` |
-| Usar `waitFor` para async | Espera a que se resuelvan Promises | `await waitFor(() => expect(...))` |
-| Mockear dependencias externas | Aísla lógica del hook | `global.fetch = jest.fn()` |
-| Limpiar mocks con `beforeEach` | Previene interferencia entre tests | `(fetch as jest.Mock).mockClear()` |
-| Testear edge cases | Encuentra bugs ocultos | Error después de éxito, unmount durante fetch |
-| Usar `rerender` para cambios | Simula props changes | `rerender({ newProp: 'value' })` |
+En la siguiente sección veremos **testing de Context** completo, incluyendo AuthContext y ProjectContext del proyecto.
 
-:::tip Próximo paso
-En la siguiente sección veremos cómo testear **integraciones con APIs reales** usando **Mock Service Worker (MSW)** para crear mocks más sofisticados y realistas.
 :::
 

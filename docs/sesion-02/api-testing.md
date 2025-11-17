@@ -53,31 +53,307 @@ it('debe retornar 400 si email ya existe', async () => {
 
 
 
-## Setup: Express + Jest + Supertest
+## Análisis del Proyecto: Taller-Testing-Security
 
-Para testear APIs construidas con Express, usamos **Supertest**, una librería que hace requests HTTP a nuestra aplicación sin necesidad de levantar un servidor real en un puerto. Esto hace los tests mucho más rápidos y confiables.
+Antes de empezar a testear, vamos a analizar el API REST real del proyecto **Taller-Testing-Security** que ya existe en `api/src/`. 
 
-### ¿Qué es Supertest?
+### Características del Backend
 
-**Supertest** permite:
-- Hacer requests HTTP (GET, POST, PUT, DELETE) a tu app Express
-- Verificar status codes (200, 404, 500, etc.)
-- Inspeccionar headers y body de las respuestas
-- Ejecutar tests en milisegundos sin levantar servidor
-- Simular diferentes escenarios (errores de red, timeouts, etc.)
+Este backend incluye:
+- **CRUD completo** de Users y Projects (Create, Read, Update, Delete)
+- **Validaciones con Joi** (campos requeridos, formatos)
+- **Arquitectura en capas** (Router → Controller → Service → Model)
+- **MongoDB con Mongoose** (base de datos real)
+- **Autenticación JWT** con bcrypt para passwords
 
-### Instalación
+### Estructura del Backend
+
+```
+api/src/
+├── routes/          # Definición de endpoints
+│   ├── UserRouter.ts
+│   └── ProjectsRouter.ts
+├── components/
+│   ├── User/
+│   │   ├── model.ts      # Mongoose schema
+│   │   ├── service.ts    # Lógica de negocio
+│   │   ├── validation.ts # Joi schemas
+│   │   └── interface.ts
+│   └── Projects/
+│       ├── model.ts
+│       ├── service.ts
+│       └── validation.ts
+└── index.ts         # Servidor Express
+```
+
+### Código Real: api/src/routes/UserRouter.ts
+
+Este es el router real del proyecto que vamos a testear:
+
+```typescript
+import { Router } from 'express';
+import { UserComponent } from '@/components';
+
+const router: Router = Router();
+
+// GET /api/v1/users - Obtener todos los usuarios
+router.get('/', UserComponent.findAll);
+
+// POST /api/v1/users - Crear nuevo usuario
+router.post('/', UserComponent.create);
+
+// GET /api/v1/users/:id - Obtener usuario por ID
+router.get('/:id', UserComponent.findOne);
+
+// DELETE /api/v1/users/:id - Eliminar usuario
+router.delete('/:id', UserComponent.remove);
+
+export default router;
+```
+
+### Controller: api/src/components/User/index.ts
+
+Los controladores manejan las requests y responses:
+
+```typescript
+import UserService from './service';
+import { HttpError } from '@/config/error';
+import { IUserModel } from './model';
+import { NextFunction, Request, Response } from 'express';
+
+export async function findAll(req: Request, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const users: IUserModel[] = await UserService.findAll();
+    res.status(200).json(users);
+  } catch (error) {
+    next(new HttpError(error.message.status, error.message));
+  }
+}
+
+export async function findOne(req: Request, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const user: IUserModel = await UserService.findOne(req.params.id);
+    res.status(200).json(user);
+  } catch (error) {
+    next(new HttpError(error.message.status, error.message));
+  }
+}
+
+export async function create(req: Request, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const user: IUserModel = await UserService.insert(req.body);
+    res.status(201).json(user);
+  } catch (error) {
+    next(new HttpError(error.message.status, error.message));
+  }
+}
+
+export async function remove(req: Request, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const user: IUserModel = await UserService.remove(req.params.id);
+    res.status(200).json(user);
+  } catch (error) {
+    next(new HttpError(error.message.status, error.message));
+  }
+}
+```
+
+### Service Layer: api/src/components/User/service.ts
+
+La capa de servicio contiene la lógica de negocio:
+
+```typescript
+import Joi from 'joi';
+import UserModel, { IUserModel } from './model';
+import UserValidation from './validation';
+import { IUserService } from './interface';
+import { Types } from 'mongoose';
+
+const UserService: IUserService = {
+  async findAll(): Promise<IUserModel[]> {
+    try {
+      return await UserModel.find({});
+    } catch (error) {
+      throw new Error(error.message);
+    }
+  },
+
+  async findOne(id: string): Promise<IUserModel> {
+    try {
+      // Validar ID con Joi
+      const validate: Joi.ValidationResult = UserValidation.getUser({ id });
+      
+      if (validate.error) {
+        throw new Error(validate.error.message);
+      }
+
+      return await UserModel.findOne(
+        { _id: Types.ObjectId(id) },
+        { password: 0 } // Excluir password de la respuesta
+      );
+    } catch (error) {
+      throw new Error(error.message);
+    }
+  },
+
+  async insert(body: IUserModel): Promise<IUserModel> {
+    try {
+      // Validar datos con Joi
+      const validate: Joi.ValidationResult<IUserModel> = UserValidation.createUser(body);
+
+      if (validate.error) {
+        throw new Error(validate.error.message);
+      }
+
+      const user: IUserModel = await UserModel.create(body);
+      return user;
+    } catch (error) {
+      throw new Error(error.message);
+    }
+  },
+
+  async remove(id: string): Promise<IUserModel> {
+    try {
+      const validate: Joi.ValidationResult = UserValidation.removeUser({ id });
+
+      if (validate.error) {
+        throw new Error(validate.error.message);
+      }
+
+      const user: IUserModel = await UserModel.findOneAndRemove({
+        _id: Types.ObjectId(id)
+      });
+
+      return user;
+    } catch (error) {
+      throw new Error(error.message);
+    }
+  }
+};
+
+export default UserService;
+```
+
+### Validation: api/src/components/User/validation.ts
+
+Schemas de validación con Joi:
+
+```typescript
+import Joi from 'joi';
+import Validation from '@/components/validation';
+import { IUserModel } from './model';
+
+class UserValidation extends Validation {
+  createUser(params: IUserModel): Joi.ValidationResult<IUserModel> {
+    const schema: Joi.ObjectSchema = Joi.object().keys({
+      name: Joi.string().required(),
+      email: Joi.string()
+        .email({ minDomainSegments: 2 })
+        .required()
+    });
+
+    return schema.validate(params);
+  }
+
+  getUser(body: { id: string }): Joi.ValidationResult<{ id: string }> {
+    const schema: Joi.ObjectSchema = Joi.object().keys({
+      id: this.customJoi.objectId().required()
+    });
+
+    return schema.validate(body);
+  }
+
+  removeUser(body: { id: string }): Joi.ValidationResult<{ id: string }> {
+    const schema: Joi.ObjectSchema = Joi.object().keys({
+      id: this.customJoi.objectId().required()
+    });
+
+    return schema.validate(body);
+  }
+}
+
+export default new UserValidation();
+```
+
+### Model: api/src/components/User/model.ts
+
+Mongoose schema (fragmento relevante):
+
+```typescript
+import * as bcrypt from 'bcrypt';
+import * as connections from '@/config/connection/connection';
+import { Document, Schema } from 'mongoose';
+
+export interface IUserModel extends Document {
+  email: string;
+  password: string;
+  passwordResetToken?: string;
+  passwordResetExpires?: Date;
+  tokens?: AuthToken[];
+  comparePassword?: (password: string) => Promise<boolean>;
+}
+
+const UserSchema = new Schema<IUserModel>(
+  {
+    email: {
+      type: String,
+      unique: true,
+      trim: true
+    },
+    password: String,
+    passwordResetToken: String,
+    passwordResetExpires: Date,
+    tokens: Array
+  },
+  {
+    collection: 'users',
+    versionKey: false
+  }
+);
+
+export default connections.db.model<IUserModel>('UserModel', UserSchema);
+```
+### Arquitectura en Capas
+
+El proyecto usa una **arquitectura MVC mejorada** con separación clara de responsabilidades:
+
+```
+Request → Router → Controller → Service → Model → Database
+```
+
+**Ventajas**:
+- **Router**: Solo define rutas y métodos HTTP
+- **Controller**: Maneja Request/Response, validaciones básicas
+- **Service**: Lógica de negocio, validación con Joi
+- **Model**: Schema de Mongoose, interacción con MongoDB
+
+Esta separación facilita el testing porque podemos:
+- Testear servicios sin Express (tests unitarios)
+- Testear routers con Supertest (tests de integración)
+- Mockear capas individuales
+
+
+
+## Configuración Completa del Entorno de Testing
+
+Ahora que conocemos la estructura del proyecto, vamos a configurar el entorno de testing paso a paso.
+
+### 1. Instalación de Dependencias Base
 
 ```bash
 # Supertest + tipos para TypeScript
 npm install --save-dev supertest @types/supertest
 
-# Express (si aún no lo tienes)
-npm install express
+# Jest (si aún no lo tienes)
+npm install --save-dev jest ts-jest @types/jest
+
+# Express tipos
 npm install --save-dev @types/express
 ```
 
-### Comparación: Test tradicional vs Supertest
+### 2. ¿Qué es Supertest?
+
+**Supertest** permite hacer requests HTTP a tu app Express sin levantar un servidor real:
 
 **❌ Enfoque antiguo (complejo y frágil)**:
 
@@ -96,7 +372,7 @@ Problemas:
 - Necesitas puerto disponible
 - Tests más lentos (networking real)
 - Puede fallar por problemas de red
-- Tienes que manejar el lifecycle del servidor
+- Lifecycle del servidor complejo
 
 **✅ Enfoque moderno (simple y confiable)**:
 
@@ -104,650 +380,581 @@ Problemas:
 import request from 'supertest';
 
 const response = await request(app)
-  .get('/api/users')
+  .get('/v1/users')
   .expect(200);
 ```
 
 Ventajas:
 - Sin puerto real, sin networking
-- Super rápido (microsegundos)
+- Tests ultra rápidos
 - Determinista (mismo resultado siempre)
 - API limpia y expresiva
 
+### 3. Instalación de MongoDB Memory Server
 
+```bash
+npm install --save-dev @shelf/jest-mongodb mongodb-memory-server
+```
 
-## Ejemplo Completo: API de Usuarios
+Para testear con una base de datos real sin afectar desarrollo:
 
-Vamos a construir un API REST completa para gestionar usuarios. Este ejemplo incluye:
-- **CRUD completo** (Create, Read, Update, Delete)
-- **Validaciones** (campos requeridos, formatos)
-- **Manejo de errores** (404, 400, 500)
-- **Base de datos en memoria** (para simplicidad en tests)
+```bash
+npm install --save-dev @shelf/jest-mongodb mongodb-memory-server
+```
 
-Este tipo de API es extremadamente común en aplicaciones reales. Aprenderás patrones que aplicarás en todos tus proyectos.
+**MongoDB Memory Server** es una base de datos MongoDB completa que:
+- Se ejecuta completamente en memoria (muy rápido)
+- Se crea y destruye automáticamente por test
+- No requiere instalación de MongoDB
+- Aísla completamente los tests
 
-### Código: src/api/users.ts
+### 4. Configuración de Jest: jest.config.js
+
+```javascript
+module.exports = {
+  preset: 'ts-jest',
+  testEnvironment: 'node',
+  
+  // MongoDB Memory Server
+  globalSetup: './src/tests/setup.ts',
+  globalTeardown: './src/tests/teardown.ts',
+  
+  // Coverage
+  collectCoverageFrom: [
+    'src/**/*.ts',
+    '!src/**/*.test.ts',
+    '!src/tests/**'
+  ],
+  coverageThreshold: {
+    global: {
+      branches: 80,
+      functions: 80,
+      lines: 80,
+      statements: 80
+    }
+  }
+};
+```
+
+### 5. Setup Global: src/tests/setup.ts
 
 ```typescript
-import express, { Router, Request, Response } from 'express';
+import { MongoMemoryServer } from 'mongodb-memory-server';
+import mongoose from 'mongoose';
 
-// Modelo de datos
-interface User {
-  id: string;
-  email: string;
-  name: string;
-  createdAt: Date;
-}
+let mongoServer: MongoMemoryServer;
 
-// Simulación de base de datos en memoria
-// En producción, esto sería MongoDB, PostgreSQL, etc.
-let users: User[] = [];
-
-export const usersRouter = Router();
-
-// ==================== ENDPOINTS ====================
-
-// GET /users - Listar todos los usuarios
-usersRouter.get('/', (req: Request, res: Response) => {
-  res.json(users);
-});
-
-// GET /users/:id - Obtener un usuario específico
-usersRouter.get('/:id', (req: Request, res: Response) => {
-  const user = users.find(u => u.id === req.params.id);
+export default async function globalSetup() {
+  // Crear servidor MongoDB en memoria
+  mongoServer = await MongoMemoryServer.create();
+  const mongoUri = mongoServer.getUri();
   
-  if (!user) {
-    return res.status(404).json({ error: 'User not found' });
-  }
+  // Guardar URI para tests individuales
+  process.env.MONGO_URI = mongoUri;
   
-  res.json(user);
-});
-
-// POST /users - Crear nuevo usuario
-usersRouter.post('/', (req: Request, res: Response) => {
-  const { email, name } = req.body;
-  
-  // Validación: campos requeridos
-  if (!email || !name) {
-    return res.status(400).json({ 
-      error: 'Email and name are required' 
-    });
-  }
-  
-  // Validación: formato de email
-  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-  if (!emailRegex.test(email)) {
-    return res.status(400).json({ 
-      error: 'Invalid email format' 
-    });
-  }
-  
-  // Validación: email único
-  if (users.some(u => u.email === email)) {
-    return res.status(400).json({ 
-      error: 'Email already exists' 
-    });
-  }
-  
-  // Crear usuario
-  const newUser: User = {
-    id: Date.now().toString(), // En producción, usa UUID
-    email,
-    name,
-    createdAt: new Date(),
-  };
-  
-  users.push(newUser);
-  
-  // 201 Created es el status correcto para recursos nuevos
-  res.status(201).json(newUser);
-});
-
-// PUT /users/:id - Actualizar usuario
-usersRouter.put('/:id', (req: Request, res: Response) => {
-  const userIndex = users.findIndex(u => u.id === req.params.id);
-  
-  if (userIndex === -1) {
-    return res.status(404).json({ error: 'User not found' });
-  }
-  
-  const { email, name } = req.body;
-  
-  // Actualizar solo campos proporcionados
-  if (email) users[userIndex].email = email;
-  if (name) users[userIndex].name = name;
-  
-  res.json(users[userIndex]);
-});
-
-// DELETE /users/:id - Eliminar usuario
-usersRouter.delete('/:id', (req: Request, res: Response) => {
-  const userIndex = users.findIndex(u => u.id === req.params.id);
-  
-  if (userIndex === -1) {
-    return res.status(404).json({ error: 'User not found' });
-  }
-  
-  users.splice(userIndex, 1);
-  
-  // 204 No Content es el status correcto para deletes exitosos
-  res.status(204).send();
-});
-
-// ==================== HELPERS ====================
-
-// Helper para tests: limpiar la "base de datos"
-export function clearUsers() {
-  users = [];
-}
-
-// Helper para tests: agregar usuarios de prueba
-export function seedUsers(testUsers: Omit<User, 'id' | 'createdAt'>[]) {
-  users = testUsers.map((u, i) => ({
-    ...u,
-    id: (i + 1).toString(),
-    createdAt: new Date(),
-  }));
+  // Conectar Mongoose
+  await mongoose.connect(mongoUri);
 }
 ```
 
-### Análisis de buenas prácticas
-
-Este código demuestra **patrones profesionales de API design**:
-
-#### 1. Status codes semánticos
+### 6. Teardown Global: src/tests/teardown.ts
 
 ```typescript
-// ✅ Usa el status code correcto para cada caso
-res.status(200).json(data);  // OK - Éxito general
-res.status(201).json(data);  // Created - Recurso creado
-res.status(204).send();      // No Content - Delete exitoso
-res.status(400).json(error); // Bad Request - Error del cliente
-res.status(404).json(error); // Not Found - Recurso no existe
-res.status(500).json(error); // Internal Server Error - Error del servidor
-```
+import mongoose from 'mongoose';
+import { MongoMemoryServer } from 'mongodb-memory-server';
 
-#### 2. Validaciones en capas
-
-```typescript
-// Capa 1: Campos requeridos
-if (!email || !name) return res.status(400).json({...});
-
-// Capa 2: Formato de datos
-if (!emailRegex.test(email)) return res.status(400).json({...});
-
-// Capa 3: Reglas de negocio
-if (users.some(u => u.email === email)) return res.status(400).json({...});
-```
-
-#### 3. Mensajes de error descriptivos
-
-```typescript
-// ❌ Mal: mensaje genérico
-{ error: 'Invalid input' }
-
-// ✅ Bien: mensaje específico
-{ error: 'Email already exists' }
-```
-
-### App: src/api/app.ts
-
-Ahora creamos la aplicación Express que usa nuestro router:
-
-```typescript
-import express from 'express';
-import { usersRouter } from './users';
-
-export function createApp() {
-  const app = express();
+export default async function globalTeardown() {
+  // Desconectar Mongoose
+  await mongoose.disconnect();
   
-  // Middleware para parsear JSON
-  app.use(express.json());
-  
-  // Montar router en /api/users
-  app.use('/api/users', usersRouter);
-  
-  // Health check endpoint (útil para monitoring)
-  app.get('/health', (req, res) => {
-    res.json({ status: 'ok' });
-  });
-  
-  return app;
+  // Parar servidor MongoDB
+  const mongoServer = await MongoMemoryServer.create();
+  await mongoServer.stop();
 }
 ```
 
-**¿Por qué `createApp` es una función?**
-
-Esto nos permite crear **instancias frescas de la app para cada test**:
+### 7. Helper de Base de Datos: src/tests/db-helper.ts
 
 ```typescript
-// Cada test tiene su propia app limpia
-beforeEach(() => {
-  app = createApp();
-  clearUsers();
-});
+import mongoose from 'mongoose';
+import { UserModel } from '../components/User/model';
+
+/**
+ * Limpia todas las colecciones de la base de datos
+ */
+export async function clearDatabase() {
+  const collections = mongoose.connection.collections;
+  
+  for (const key in collections) {
+    await collections[key].deleteMany({});
+  }
+}
+
+/**
+ * Crea usuarios de prueba
+ */
+export async function seedUsers(users: Array<{ name: string; email: string; password: string }>) {
+  const createdUsers = [];
+  
+  for (const user of users) {
+    const created = await UserModel.create(user);
+    createdUsers.push(created);
+  }
+  
+  return createdUsers;
+}
 ```
 
-Sin esto, los tests se contaminarían entre sí (state compartido).
+### 8. Scripts de package.json
 
+Agrega estos scripts para ejecutar los tests fácilmente:
+
+```json
+{
+  "scripts": {
+    "test": "jest",
+    "test:watch": "jest --watch",
+    "test:coverage": "jest --coverage",
+    "test:integration": "jest --testPathPattern=integration",
+    "test:api": "jest --testPathPattern=api"
+  }
+}
+```
+
+### 9. Ejecutar los Tests
+
+```bash
+# Ejecutar todos los tests
+npm test
+
+# Ejecutar solo tests de integración de User
+npm test User.integration
+
+# Ejecutar con coverage
+npm test:coverage
+
+# Ejecutar en modo watch (re-ejecuta al cambiar código)
+npm test:watch
+
+# Solo tests de API
+npm test:api
+```
+
+:::tip Verificación del Setup
+
+Para verificar que todo está configurado correctamente:
+
+1. **Verifica las dependencias**: `npm list supertest mongodb-memory-server`
+2. **Corre un test simple**: Crea un test básico que solo haga `expect(true).toBe(true)`
+3. **Verifica MongoDB Memory Server**: El primer test será lento (~10s) porque descarga MongoDB
+4. **Tests subsecuentes**: Deben ser muy rápidos (&lt;100ms cada uno)
+
+:::
 
 
 
 ## Tests de Integración de API
 
-Ahora vamos a testear toda la API de forma exhaustiva. Estos tests verifican:
-- **Respuestas correctas** para requests válidos
-- **Manejo de errores** para requests inválidos
-- **Side effects** (creación, actualización, eliminación de datos)
-- **Edge cases** (emails duplicados, IDs inexistentes, etc.)
+Ahora vamos a testear toda la API de forma exhaustiva usando **MongoDB Memory Server**.
 
-### Test Completo: src/api/tests/users.integration.test.ts
+### Test Completo: api/src/tests/User.integration.test.ts
 
 ```typescript
 import request from 'supertest';
-import { createApp } from '../app';
-import { clearUsers, seedUsers } from '../users';
+import mongoose from 'mongoose';
+import { Server } from '../../config/server/server';
+import { clearDatabase, seedUsers } from './db-helper';
 
-describe('Users API Integration', () => {
-  let app: Express.Application;
+describe('User API Integration Tests', () => {
+  let app: any;
 
-  // Antes de cada test: app fresca + base de datos limpia
-  beforeEach(() => {
-    app = createApp();
-    clearUsers();
+  // Setup antes de todos los tests
+  beforeAll(async () => {
+    // Conectar a MongoDB Memory Server
+    await mongoose.connect(process.env.MONGO_URI!);
+    
+    // Crear instancia de la app Express
+    const serverInstance = new Server();
+    app = serverInstance.app;
   });
 
-  // ==================== GET /api/users ====================
+  // Limpiar base de datos antes de cada test
+  beforeEach(async () => {
+    await clearDatabase();
+  });
+
+  // Cerrar conexión después de todos los tests
+  afterAll(async () => {
+    await mongoose.connection.close();
+  });
+
+  // ==================== GET /v1/users ====================
   
-  describe('GET /api/users', () => {
+  describe('GET /v1/users', () => {
     it('debe retornar array vacío inicialmente', async () => {
       const response = await request(app)
-        .get('/api/users')
-        .expect(200); // Verifica status code
+        .get('/v1/users')
+        .expect(200);
 
       expect(response.body).toEqual([]);
       expect(Array.isArray(response.body)).toBe(true);
     });
 
     it('debe retornar todos los usuarios', async () => {
-      // Arrange: creamos usuarios de prueba
-      await request(app)
-        .post('/api/users')
-        .send({ email: 'user1@test.com', name: 'User 1' });
-      
-      await request(app)
-        .post('/api/users')
-        .send({ email: 'user2@test.com', name: 'User 2' });
+      // Arrange: crear usuarios de prueba en MongoDB
+      await seedUsers([
+        { name: 'Alice', email: 'alice@test.com', password: 'password123' },
+        { name: 'Bob', email: 'bob@test.com', password: 'password456' }
+      ]);
 
-      // Act: obtenemos todos los usuarios
+      // Act: obtener todos los usuarios
       const response = await request(app)
-        .get('/api/users')
+        .get('/v1/users')
         .expect(200);
 
-      // Assert: verificamos cantidad y estructura
+      // Assert
       expect(response.body).toHaveLength(2);
-      expect(response.body[0]).toHaveProperty('id');
+      expect(response.body[0]).toHaveProperty('_id');
       expect(response.body[0]).toHaveProperty('email');
       expect(response.body[0]).toHaveProperty('name');
+      // ✅ Password NO debe retornarse (select: false en el schema)
+      expect(response.body[0]).not.toHaveProperty('password');
     });
 
-    it('debe retornar usuarios con estructura correcta', async () => {
-      // Seed con datos conocidos
-      seedUsers([
-        { email: 'test@example.com', name: 'Test User' }
+    it('debe retornar usuarios con estructura correcta de Mongoose', async () => {
+      await seedUsers([
+        { name: 'Test User', email: 'test@example.com', password: 'password123' }
       ]);
 
       const response = await request(app)
-        .get('/api/users')
+        .get('/v1/users')
         .expect(200);
 
-      // Verificamos la estructura completa
+      // Mongoose retorna _id como ObjectId
       expect(response.body[0]).toMatchObject({
-        id: expect.any(String),
+        _id: expect.any(String),
         email: 'test@example.com',
         name: 'Test User',
-        createdAt: expect.any(String),
       });
     });
   });
 
-  // ==================== GET /api/users/:id ====================
+  // ==================== GET /v1/users/:id ====================
   
-  describe('GET /api/users/:id', () => {
-    it('debe retornar usuario específico', async () => {
-      // Crear usuario
-      const createResponse = await request(app)
-        .post('/api/users')
-        .send({ email: 'test@example.com', name: 'Test User' });
-
-      const userId = createResponse.body.id;
+  describe('GET /v1/users/:id', () => {
+    it('debe retornar usuario específico por ID', async () => {
+      // Crear usuario en MongoDB
+      const [user] = await seedUsers([
+        { name: 'Test User', email: 'test@example.com', password: 'password123' }
+      ]);
 
       // Obtener por ID
       const response = await request(app)
-        .get(`/api/users/${userId}`)
+        .get(`/v1/users/${user._id}`)
         .expect(200);
 
-      expect(response.body.id).toBe(userId);
+      expect(response.body._id).toBe(user._id.toString());
       expect(response.body.email).toBe('test@example.com');
     });
 
-    it('debe retornar 404 si usuario no existe', async () => {
+    it('debe retornar 400 con ID inválido de MongoDB', async () => {
       const response = await request(app)
-        .get('/api/users/999')
+        .get('/v1/users/invalid-id')
+        .expect(400);
+
+      expect(response.body.error).toContain('Cast to ObjectId failed');
+    });
+
+    it('debe retornar 404 si usuario no existe', async () => {
+      // ID válido pero no existe en DB
+      const fakeId = new mongoose.Types.ObjectId();
+      
+      const response = await request(app)
+        .get(`/v1/users/${fakeId}`)
         .expect(404);
 
       expect(response.body.error).toBe('User not found');
     });
   });
 
-  // ==================== POST /api/users ====================
+  // ==================== POST /v1/users ====================
   
-  describe('POST /api/users', () => {
+  describe('POST /v1/users', () => {
     it('debe crear usuario exitosamente', async () => {
       const newUser = {
         email: 'test@example.com',
         name: 'Test User',
+        password: 'MySecurePassword123'
       };
 
       const response = await request(app)
-        .post('/api/users')
+        .post('/v1/users')
         .send(newUser)
-        .expect(201); // 201 Created
+        .expect(201);
 
       // Verificar que retorna el usuario creado
-      expect(response.body).toMatchObject(newUser);
-      expect(response.body).toHaveProperty('id');
-      expect(response.body).toHaveProperty('createdAt');
+      expect(response.body.email).toBe(newUser.email);
+      expect(response.body.name).toBe(newUser.name);
+      expect(response.body).toHaveProperty('_id');
+      
+      // ✅ Password debe estar hasheado (bcrypt)
+      expect(response.body.password).not.toBe(newUser.password);
+      expect(response.body.password).toMatch(/^\$2[aby]\$/); // bcrypt pattern
     });
 
-    it('debe retornar 400 sin email', async () => {
+    it('debe validar email requerido (Joi)', async () => {
       const response = await request(app)
-        .post('/api/users')
-        .send({ name: 'Test User' }) // Falta email
+        .post('/v1/users')
+        .send({ name: 'Test User', password: 'password123' })
         .expect(400);
 
-      expect(response.body.error).toBe('Email and name are required');
+      // Joi validation error
+      expect(response.body.error).toContain('email');
     });
 
-    it('debe retornar 400 sin name', async () => {
+    it('debe validar formato de email (Joi)', async () => {
       const response = await request(app)
-        .post('/api/users')
-        .send({ email: 'test@example.com' }) // Falta name
-        .expect(400);
-
-      expect(response.body.error).toBe('Email and name are required');
-    });
-
-    it('debe retornar 400 con email inválido', async () => {
-      const response = await request(app)
-        .post('/api/users')
+        .post('/v1/users')
         .send({ 
-          email: 'invalid-email', // Sin @ ni dominio
-          name: 'Test User' 
+          email: 'invalid-email', 
+          name: 'Test', 
+          password: 'password123' 
         })
         .expect(400);
 
-      expect(response.body.error).toBe('Invalid email format');
+      expect(response.body.error).toContain('valid email');
     });
 
-    it('debe retornar 400 si email ya existe', async () => {
-      const userData = {
-        email: 'test@example.com',
-        name: 'Test User',
-      };
-
-      // Primer usuario - OK
-      await request(app)
-        .post('/api/users')
-        .send(userData)
-        .expect(201);
-
-      // Segundo usuario con mismo email - ERROR
+    it('debe validar name requerido (Joi)', async () => {
       const response = await request(app)
-        .post('/api/users')
-        .send(userData)
+        .post('/v1/users')
+        .send({ email: 'test@example.com', password: 'password123' })
         .expect(400);
 
-      expect(response.body.error).toBe('Email already exists');
+      expect(response.body.error).toContain('name');
     });
 
-    it('debe persistir el usuario creado', async () => {
-      // Crear usuario
+    it('debe rechazar email duplicado (Mongoose unique)', async () => {
+      // Crear primer usuario
       await request(app)
-        .post('/api/users')
-        .send({ email: 'test@example.com', name: 'Test User' });
+        .post('/v1/users')
+        .send({ 
+          email: 'test@example.com', 
+          name: 'User 1', 
+          password: 'password123' 
+        });
 
-      // Verificar que aparece en el listado
+      // Intentar crear segundo usuario con mismo email
       const response = await request(app)
-        .get('/api/users')
-        .expect(200);
+        .post('/v1/users')
+        .send({ 
+          email: 'test@example.com', 
+          name: 'User 2', 
+          password: 'password456' 
+        })
+        .expect(500); // Mongoose duplicate key error
 
-      expect(response.body).toHaveLength(1);
+      expect(response.body.error).toContain('duplicate');
     });
   });
 
-  // ==================== PUT /api/users/:id ====================
+  // ==================== DELETE /v1/users/:id ====================
   
-  describe('PUT /api/users/:id', () => {
-    it('debe actualizar usuario exitosamente', async () => {
+  describe('DELETE /v1/users/:id', () => {
+    it('debe eliminar usuario existente', async () => {
       // Crear usuario
-      const createResponse = await request(app)
-        .post('/api/users')
-        .send({ email: 'old@example.com', name: 'Old Name' });
+      const [user] = await seedUsers([
+        { name: 'To Delete', email: 'delete@test.com', password: 'password123' }
+      ]);
 
-      const userId = createResponse.body.id;
-
-      // Actualizar
-      const response = await request(app)
-        .put(`/api/users/${userId}`)
-        .send({ email: 'new@example.com', name: 'New Name' })
-        .expect(200);
-
-      expect(response.body.email).toBe('new@example.com');
-      expect(response.body.name).toBe('New Name');
-    });
-
-    it('debe retornar 404 si usuario no existe', async () => {
-      const response = await request(app)
-        .put('/api/users/999')
-        .send({ email: 'test@example.com', name: 'Test' })
-        .expect(404);
-
-      expect(response.body.error).toBe('User not found');
-    });
-
-    it('debe actualizar solo campos proporcionados', async () => {
-      // Crear usuario
-      const createResponse = await request(app)
-        .post('/api/users')
-        .send({ email: 'test@example.com', name: 'Test User' });
-
-      const userId = createResponse.body.id;
-
-      // Actualizar solo el name
-      const response = await request(app)
-        .put(`/api/users/${userId}`)
-        .send({ name: 'Updated Name' }) // Sin email
-        .expect(200);
-
-      expect(response.body.name).toBe('Updated Name');
-      expect(response.body.email).toBe('test@example.com'); // Sin cambios
-    });
-  });
-
-  // ==================== DELETE /api/users/:id ====================
-  
-  describe('DELETE /api/users/:id', () => {
-    it('debe eliminar usuario exitosamente', async () => {
-      // Crear usuario
-      const createResponse = await request(app)
-        .post('/api/users')
-        .send({ email: 'test@example.com', name: 'Test User' });
-
-      const userId = createResponse.body.id;
-
-      // Eliminar
+      // Eliminar usuario
       await request(app)
-        .delete(`/api/users/${userId}`)
+        .delete(`/v1/users/${user._id}`)
         .expect(204); // 204 No Content
 
       // Verificar que ya no existe
-      await request(app)
-        .get(`/api/users/${userId}`)
+      const getResponse = await request(app)
+        .get(`/v1/users/${user._id}`)
         .expect(404);
     });
 
     it('debe retornar 404 si usuario no existe', async () => {
+      const fakeId = new mongoose.Types.ObjectId();
+      
       const response = await request(app)
-        .delete('/api/users/999')
+        .delete(`/v1/users/${fakeId}`)
         .expect(404);
 
       expect(response.body.error).toBe('User not found');
     });
 
-    it('debe eliminar solo el usuario especificado', async () => {
-      // Crear dos usuarios
-      const user1 = await request(app)
-        .post('/api/users')
-        .send({ email: 'user1@test.com', name: 'User 1' });
-
-      await request(app)
-        .post('/api/users')
-        .send({ email: 'user2@test.com', name: 'User 2' });
-
-      // Eliminar solo el primero
-      await request(app)
-        .delete(`/api/users/${user1.body.id}`)
-        .expect(204);
-
-      // Verificar que queda solo uno
+    it('debe validar ID de MongoDB', async () => {
       const response = await request(app)
-        .get('/api/users')
-        .expect(200);
+        .delete('/v1/users/invalid-id')
+        .expect(400);
 
-      expect(response.body).toHaveLength(1);
-      expect(response.body[0].email).toBe('user2@test.com');
-    });
-  });
-
-  // ==================== TESTS DE INTEGRACIÓN COMPLETA ====================
-  
-  describe('Flujo completo CRUD', () => {
-    it('debe permitir crear, leer, actualizar y eliminar', async () => {
-      // CREATE
-      const createRes = await request(app)
-        .post('/api/users')
-        .send({ email: 'test@example.com', name: 'Original' })
-        .expect(201);
-
-      const userId = createRes.body.id;
-
-      // READ
-      let readRes = await request(app)
-        .get(`/api/users/${userId}`)
-        .expect(200);
-      expect(readRes.body.name).toBe('Original');
-
-      // UPDATE
-      await request(app)
-        .put(`/api/users/${userId}`)
-        .send({ name: 'Updated' })
-        .expect(200);
-
-      readRes = await request(app)
-        .get(`/api/users/${userId}`)
-        .expect(200);
-      expect(readRes.body.name).toBe('Updated');
-
-      // DELETE
-      await request(app)
-        .delete(`/api/users/${userId}`)
-        .expect(204);
-
-      await request(app)
-        .get(`/api/users/${userId}`)
-        .expect(404);
+      expect(response.body.error).toContain('Cast to ObjectId failed');
     });
   });
 });
 ```
 
-### Análisis de técnicas de testing
+### Puntos Clave de los Tests
+
+#### 1. **MongoDB Memory Server**
+```typescript
+beforeAll(async () => {
+  await mongoose.connect(process.env.MONGO_URI!);
+});
+```
+- Base de datos real en memoria
+- Aislamiento completo entre tests
+- Tests rápidos (sin I/O de disco)
+
+#### 2. **Validación en Capas**
+```typescript
+// Capa 1: Joi validation (email formato, campos requeridos)
+expect(response.body.error).toContain('valid email');
+
+// Capa 2: Mongoose validation (unique constraint)
+expect(response.body.error).toContain('duplicate');
+
+// Capa 3: MongoDB constraints (ObjectId format)
+expect(response.body.error).toContain('Cast to ObjectId failed');
+```
+
+#### 3. **Seguridad Verificada**
+```typescript
+// ✅ Password hasheado
+expect(response.body.password).toMatch(/^\$2[aby]\$/);
+
+// ✅ Password no expuesto en GET
+expect(response.body[0]).not.toHaveProperty('password');
+```
+
+#### 4. **IDs Reales de MongoDB**
+```typescript
+// Usar ObjectId real para tests
+const fakeId = new mongoose.Types.ObjectId();
+
+// Verificar formato correcto
+expect(response.body._id).toBe(user._id.toString());
+```
+### Análisis de Técnicas de Testing
 
 #### 1. Patrón AAA (Arrange-Act-Assert)
 
 ```typescript
 it('debe retornar todos los usuarios', async () => {
-  // ARRANGE: Preparar el estado
-  await request(app).post('/api/users').send({...});
+  // ARRANGE: Preparar el estado con seedUsers
+  await seedUsers([
+    { name: 'Alice', email: 'alice@test.com', password: 'password123' }
+  ]);
   
   // ACT: Ejecutar la acción
-  const response = await request(app).get('/api/users');
+  const response = await request(app).get('/v1/users');
   
   // ASSERT: Verificar el resultado
-  expect(response.body).toHaveLength(2);
-});
-```
-
-#### 2. Tests de side effects
-
-```typescript
-it('debe persistir el usuario creado', async () => {
-  // Crear usuario
-  await request(app).post('/api/users').send({...});
-
-  // Verificar que persiste con otro request
-  const response = await request(app).get('/api/users');
   expect(response.body).toHaveLength(1);
+  expect(response.body[0].email).toBe('alice@test.com');
 });
 ```
 
-Esto verifica que **los cambios realmente se guardan**, no solo que retornan status 201.
-
-#### 3. Tests de edge cases
+#### 2. Tests de Side Effects con MongoDB
 
 ```typescript
-it('debe retornar 400 si email ya existe', async () => {
-  // Detecta el caso límite de emails duplicados
-});
+it('debe persistir el usuario en MongoDB', async () => {
+  // Crear usuario via API
+  await request(app)
+    .post('/v1/users')
+    .send({ name: 'Test', email: 'test@example.com', password: 'pass123' });
 
-it('debe actualizar solo campos proporcionados', async () => {
-  // Verifica partial updates
+  // Verificar que persiste consultando directamente MongoDB
+  const user = await UserModel.findOne({ email: 'test@example.com' });
+  expect(user).not.toBeNull();
+  expect(user!.name).toBe('Test');
 });
 ```
 
-#### 4. Helpers para setup
+Esto verifica que **los cambios realmente se guardan en la base de datos**, no solo que retornan status 201.
+
+#### 3. Tests de Validaciones en Capas
 
 ```typescript
-beforeEach(() => {
-  app = createApp();  // App limpia
-  clearUsers();       // DB limpia
+it('debe validar con Joi antes de llegar a Mongoose', async () => {
+  // Joi rechaza email inválido
+  const response = await request(app)
+    .post('/v1/users')
+    .send({ name: 'Test', email: 'invalid', password: 'pass123' })
+    .expect(400);
+  
+  expect(response.body.error).toContain('valid email');
+});
+
+it('debe validar constraint unique de Mongoose', async () => {
+  // Primer usuario OK
+  await request(app).post('/v1/users').send({...});
+  
+  // Segundo con mismo email - Mongoose lo rechaza
+  const response = await request(app).post('/v1/users').send({...});
+  expect(response.body.error).toContain('duplicate');
 });
 ```
 
-Garantiza **aislamiento total** entre tests.
+#### 4. Limpieza de Base de Datos
 
-:::tip Best Practices de API Testing
-1. **Test cada endpoint** con casos exitosos y fallidos
-2. **Verifica status codes** precisos (200, 201, 400, 404, 500)
-3. **Valida estructura de respuestas** con `toMatchObject`, `toHaveProperty`
-4. **Test side effects** (verificar que cambios persisten)
-5. **Test edge cases** (validaciones, límites, duplicados)
-6. **Usa beforeEach** para limpiar estado entre tests
-7. **Agrupa tests** por endpoint con `describe`
+```typescript
+beforeEach(async () => {
+  await clearDatabase(); // Limpia MongoDB Memory Server
+});
+```
+
+Garantiza **aislamiento total** entre tests sin afectar base de datos de desarrollo.
+
+#### 5. Tests con IDs Reales de MongoDB
+
+```typescript
+it('debe manejar ObjectIds correctamente', async () => {
+  // ID inválido - Error de casting
+  await request(app).get('/v1/users/invalid-id').expect(400);
+  
+  // ID válido pero no existe - 404
+  const fakeId = new mongoose.Types.ObjectId();
+  await request(app).get(`/v1/users/${fakeId}`).expect(404);
+  
+  // ID válido y existe - 200
+  const [user] = await seedUsers([{...}]);
+  await request(app).get(`/v1/users/${user._id}`).expect(200);
+});
+```
+
+:::tip Best Practices de API Testing con MongoDB
+
+1. **Usa MongoDB Memory Server** para tests rápidos y aislados
+2. **Limpia la base de datos** en `beforeEach` para evitar contaminación
+3. **Verifica validaciones en todas las capas** (Joi, Mongoose, MongoDB)
+4. **Test con ObjectIds reales** de Mongoose, no strings genéricos
+5. **Verifica seguridad**: passwords hasheados, campos sensibles no expuestos
+6. **Test side effects** consultando directamente la base de datos
+7. **Agrupa tests** por endpoint con `describe` anidados
+
 :::
 
 ## Resumen
 
-En esta sección aprendimos:
+En esta sección aprendimos a testear APIs REST con:
 
-1. **Por qué testear APIs**: Validar contratos, detectar regresiones, documentar comportamiento
-2. **Supertest**: Herramienta para hacer requests HTTP sin levantar servidor
-3. **Estructura de tests**: Arrange-Act-Assert, describe blocks, beforeEach
-4. **Cobertura completa**: CRUD, validaciones, errores, edge cases
-5. **Best practices**: Status codes semánticos, mensajes descriptivos, aislamiento de tests
+1. **MongoDB Memory Server**: Base de datos real en memoria para tests
+2. **Arquitectura en capas**: Router → Controller → Service → Model
+3. **Supertest**: Requests HTTP sin levantar servidor
+4. **Validación completa**: Joi (service), Mongoose (model), MongoDB (constraints)
+5. **Seguridad verificada**: Passwords hasheados, campos sensibles ocultos
+6. **Cobertura exhaustiva**: CRUD completo, validaciones, errores, edge cases
 
 :::info Próximo paso
-En la siguiente sección veremos **fixtures** y **Mock Service Worker (MSW)** para crear datos de prueba realistas y mockear APIs externas.
+
+En la siguiente sección veremos **autenticación JWT** y cómo testear endpoints protegidos con tokens de autorización.
+
 :::
+
 

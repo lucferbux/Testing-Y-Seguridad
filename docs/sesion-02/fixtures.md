@@ -37,101 +37,265 @@ Imagina que estás haciendo una película. En lugar de que cada escena construya
 
 
 
-## Ejemplo Práctico: Fixtures de Usuarios
+## Ejemplo Práctico: Fixtures del Proyecto
 
-Vamos a crear un sistema completo de fixtures para una aplicación que maneja usuarios. Este ejemplo te mostrará **patrones reales** que usarás en producción.
+Vamos a crear fixtures basados en los modelos reales del **Taller-Testing-Security**: **User**, **Project** y **AboutMe**. Este ejemplo muestra patrones reales que usarás en producción.
 
-### Estructura de Fixtures: src/tests/fixtures/users.ts
+### Modelos del Proyecto
+
+Primero, veamos las interfaces reales:
 
 ```typescript
+// api/src/components/User/model.ts
+export interface IUserModel {
+  _id?: string;
+  email: string;
+  password: string;
+  passwordResetToken?: string;
+  passwordResetExpires?: Date;
+  tokens?: AuthToken[];
+}
+
+// ui/src/model/project.ts
+export interface Project {
+  _id?: string;
+  title: string;
+  description: string;
+  version: string;
+  link: string;
+  tag: string;
+  timestamp: number;
+}
+
+// ui/src/model/aboutme.ts
+export interface AboutMe {
+  _id: string;
+  name: string;
+  birthday?: number;
+  nationality?: string;
+  job?: string;
+  github?: string;
+}
+```
+
+### Estructura de Fixtures: src/tests/fixtures/
+
+#### 1. Fixtures de Usuarios (users.ts)
+
+```typescript
+import { IUserModel } from '@/components/User/model';
+
 // ==================== DATOS BÁSICOS ====================
 
 // Usuario válido estándar - el caso más común
-export const validUser = {
+export const validUser: Partial<IUserModel> = {
   email: 'john.doe@example.com',
-  name: 'John Doe',
-  age: 30,
-  role: 'user' as const,
+  password: 'SecurePassword123!',
 };
 
 // Casos de usuarios inválidos - para testear validaciones
 export const invalidUsers = {
   noEmail: { 
-    name: 'No Email',
-    age: 25,
-    role: 'user' as const,
-  },
-  noName: { 
-    email: 'no-name@example.com',
-    age: 25,
-    role: 'user' as const,
-  },
+    password: 'SecurePassword123!',
+  } as Partial<IUserModel>,
+  
+  noPassword: { 
+    email: 'no-password@example.com',
+  } as Partial<IUserModel>,
+  
   invalidEmail: { 
     email: 'not-an-email', // Sin @ ni dominio
-    name: 'Invalid Email',
-    age: 25,
-    role: 'user' as const,
-  },
-  underage: {
-    email: 'young@example.com',
-    name: 'Too Young',
-    age: 15, // Menor de 18
-    role: 'user' as const,
-  },
+    password: 'SecurePassword123!',
+  } as Partial<IUserModel>,
+  
+  weakPassword: {
+    email: 'weak@example.com',
+    password: '123', // Demasiado corta
+  } as Partial<IUserModel>,
 };
 
 // ==================== COLECCIONES ====================
 
 // Conjunto de usuarios de muestra para tests que necesitan múltiples usuarios
-export const sampleUsers = [
-  { email: 'alice@example.com', name: 'Alice', age: 28, role: 'user' as const },
-  { email: 'bob@example.com', name: 'Bob', age: 35, role: 'admin' as const },
-  { email: 'charlie@example.com', name: 'Charlie', age: 42, role: 'user' as const },
+export const sampleUsers: Partial<IUserModel>[] = [
+  { email: 'alice@example.com', password: 'AlicePass123!' },
+  { email: 'bob@example.com', password: 'BobSecure456!' },
+  { email: 'charlie@example.com', password: 'Charlie789!' },
 ];
 
-// Usuarios con roles específicos
-export const adminUser = {
-  email: 'admin@example.com',
-  name: 'Admin User',
-  age: 40,
-  role: 'admin' as const,
+// Usuario con token de reset
+export const userWithResetToken: Partial<IUserModel> = {
+  email: 'reset@example.com',
+  password: 'OldPassword123!',
+  passwordResetToken: 'reset-token-abc123',
+  passwordResetExpires: new Date(Date.now() + 3600000), // 1 hora desde ahora
+};
+```
+
+#### 2. Fixtures de Proyectos (projects.ts)
+
+```typescript
+import { Project } from '@/model/project';
+
+// ==================== DATOS BÁSICOS ====================
+
+// Proyecto válido estándar
+export const validProject: Omit<Project, '_id'> = {
+  title: 'Taller Testing & Security',
+  description: 'Proyecto educativo sobre testing y seguridad en aplicaciones web',
+  version: '1.0.0',
+  link: 'https://github.com/lucferbux/Taller-Testing-Security',
+  tag: 'education',
+  timestamp: Date.now(),
 };
 
-export const moderatorUser = {
-  email: 'mod@example.com',
-  name: 'Moderator User',
-  age: 32,
-  role: 'moderator' as const,
+// Casos de proyectos inválidos - para testear validaciones
+export const invalidProjects = {
+  noTitle: {
+    description: 'Missing title',
+    version: '1.0.0',
+    link: 'https://github.com/test',
+    tag: 'test',
+    timestamp: Date.now(),
+  } as Partial<Project>,
+  
+  noDescription: {
+    title: 'No Description Project',
+    version: '1.0.0',
+    link: 'https://github.com/test',
+    tag: 'test',
+    timestamp: Date.now(),
+  } as Partial<Project>,
+  
+  invalidLink: {
+    title: 'Invalid Link',
+    description: 'Project with invalid link',
+    version: '1.0.0',
+    link: 'not-a-url',
+    tag: 'test',
+    timestamp: Date.now(),
+  } as Partial<Project>,
 };
 
-// ==================== FACTORY FUNCTION ====================
+// ==================== COLECCIONES ====================
 
-// Función para crear usuarios mock con valores personalizables
-// Esta es la forma más flexible de crear fixtures
-export function createMockUser(overrides: Partial<typeof validUser> = {}) {
+// Conjunto de proyectos de muestra
+export const sampleProjects: Omit<Project, '_id'>[] = [
+  {
+    title: 'React Dashboard',
+    description: 'Dashboard administrativo con React y TypeScript',
+    version: '2.1.0',
+    link: 'https://github.com/lucferbux/react-dashboard',
+    tag: 'react',
+    timestamp: Date.now(),
+  },
+  {
+    title: 'Vue Portfolio',
+    description: 'Portfolio personal construido con Vue.js',
+    version: '1.5.2',
+    link: 'https://github.com/lucferbux/vue-portfolio',
+    tag: 'vue',
+    timestamp: Date.now() - 86400000, // 1 día atrás
+  },
+  {
+    title: 'Node API',
+    description: 'RESTful API con Node.js y Express',
+    version: '3.0.0',
+    link: 'https://github.com/lucferbux/node-api',
+    tag: 'backend',
+    timestamp: Date.now() - 172800000, // 2 días atrás
+  },
+];
+
+// Proyectos por categoría
+export const educationProjects = sampleProjects.filter(p => p.tag === 'education');
+export const reactProjects = sampleProjects.filter(p => p.tag === 'react');
+```
+
+#### 3. Fixtures de AboutMe (aboutme.ts)
+
+```typescript
+import { AboutMe } from '@/model/aboutme';
+
+// ==================== DATOS BÁSICOS ====================
+
+// AboutMe válido estándar
+export const validAboutMe: AboutMe = {
+  _id: '507f1f77bcf86cd799439011',
+  name: 'Lucas Fernandez',
+  birthday: 631152000000, // 1990-01-01 en timestamp
+  nationality: 'Spanish',
+  job: 'Software Developer',
+  github: 'https://github.com/lucferbux',
+};
+
+// Casos de aboutme inválidos
+export const invalidAboutMe = {
+  noName: {
+    _id: '507f1f77bcf86cd799439012',
+    birthday: 631152000000,
+    nationality: 'Spanish',
+  } as Partial<AboutMe>,
+  
+  invalidGithub: {
+    _id: '507f1f77bcf86cd799439013',
+    name: 'Invalid Github',
+    github: 'not-a-url',
+  } as Partial<AboutMe>,
+};
+
+// AboutMe mínimo (solo campos requeridos)
+export const minimalAboutMe: AboutMe = {
+  _id: '507f1f77bcf86cd799439014',
+  name: 'Minimal User',
+};
+
+// AboutMe completo (todos los campos)
+export const completeAboutMe: AboutMe = {
+  _id: '507f1f77bcf86cd799439015',
+  name: 'Complete User',
+  birthday: 694224000000, // 1992-01-01
+  nationality: 'American',
+  job: 'Full Stack Developer',
+  github: 'https://github.com/completeuser',
+};
+
+// ==================== FACTORY FUNCTIONS ====================
+
+// Función para crear proyectos mock con valores personalizables
+export function createMockProject(overrides: Partial<Project> = {}): Project {
   return {
-    id: Date.now().toString(), // ID único
-    email: 'mock@example.com',
-    name: 'Mock User',
-    age: 25,
-    role: 'user' as const,
-    createdAt: new Date().toISOString(),
+    _id: Math.random().toString(36).substring(2, 11),
+    title: 'Mock Project',
+    description: 'This is a mock project for testing',
+    version: '1.0.0',
+    link: 'https://github.com/mock/project',
+    tag: 'test',
+    timestamp: Date.now(),
     ...overrides, // Permite sobrescribir cualquier campo
   };
 }
 
-// Helper para crear usuarios completos (con ID y timestamps)
-export function createCompleteUser(overrides: Partial<typeof validUser> = {}) {
-  const baseUser = {
-    ...validUser,
-    ...overrides,
-  };
-  
+// Helper para crear usuarios completos
+export function createMockUser(overrides: Partial<IUserModel> = {}): IUserModel {
   return {
-    ...baseUser,
-    id: Date.now().toString(),
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
+    _id: Math.random().toString(36).substring(2, 11),
+    email: 'mock@example.com',
+    password: 'MockPassword123!',
+    ...overrides,
+  } as IUserModel;
+}
+
+// Helper para crear AboutMe completo
+export function createMockAboutMe(overrides: Partial<AboutMe> = {}): AboutMe {
+  return {
+    _id: Math.random().toString(36).substring(2, 11),
+    name: 'Mock User',
+    birthday: Date.now(),
+    nationality: 'Unknown',
+    job: 'Developer',
+    github: 'https://github.com/mockuser',
+    ...overrides,
   };
 }
 ```
@@ -169,41 +333,33 @@ const youngUser = createMockUser({ age: 20 });
 
 ## Uso de Fixtures en Tests
 
-Ahora veamos cómo usar estos fixtures en tests reales:
+Ahora veamos cómo usar estos fixtures en tests reales del proyecto:
 
-### Ejemplo 1: Tests básicos con fixtures
+### Ejemplo 1: Tests de API con Fixtures
 
 ```typescript
 import { validUser, invalidUsers, sampleUsers } from './fixtures/users';
+import { validProject, sampleProjects } from './fixtures/projects';
 import request from 'supertest';
-import { createApp } from '../app';
+import app from '../server';
 
-describe('Users API with Fixtures', () => {
-  let app;
+describe('API con Fixtures del Proyecto', () => {
 
-  beforeEach(() => {
-    app = createApp();
-  });
-
-  // ==================== HAPPY PATH ====================
+  // ==================== USERS API ====================
   
   it('debe crear usuario con datos válidos', async () => {
-    // En lugar de definir el usuario aquí, usamos el fixture
     const response = await request(app)
-      .post('/api/users')
-      .send(validUser) // ← Fixture reutilizable
+      .post('/v1/users')
+      .send(validUser) // ← Fixture reutilizable del proyecto
       .expect(201);
 
-    // Verificamos que contiene los datos del fixture
-    expect(response.body).toMatchObject(validUser);
-    expect(response.body).toHaveProperty('id'); // ID se genera en el servidor
+    expect(response.body).toHaveProperty('_id');
+    expect(response.body.email).toBe(validUser.email);
   });
 
-  // ==================== ERROR CASES ====================
-  
   it('debe rechazar usuario sin email', async () => {
     const response = await request(app)
-      .post('/api/users')
+      .post('/v1/users')
       .send(invalidUsers.noEmail) // ← Fixture de error
       .expect(400);
 
@@ -212,55 +368,109 @@ describe('Users API with Fixtures', () => {
 
   it('debe rechazar email inválido', async () => {
     const response = await request(app)
-      .post('/api/users')
+      .post('/v1/users')
       .send(invalidUsers.invalidEmail)
       .expect(400);
 
-    expect(response.body.error).toContain('Invalid email');
+    expect(response.body.error).toMatch(/email.*invalid/i);
   });
 
-  it('debe rechazar usuarios menores de edad', async () => {
-    const response = await request(app)
-      .post('/api/users')
-      .send(invalidUsers.underage)
-      .expect(400);
+  // ==================== PROJECTS API ====================
 
-    expect(response.body.error).toContain('age');
-  });
-
-  // ==================== BULK OPERATIONS ====================
-  
-  it('debe crear múltiples usuarios', async () => {
-    // Usamos el array de fixtures para crear múltiples usuarios
-    for (const user of sampleUsers) {
-      await request(app)
-        .post('/api/users')
-        .send(user)
-        .expect(201);
-    }
-
-    // Verificamos que todos se crearon
-    const response = await request(app)
-      .get('/api/users')
+  it('debe crear proyecto con datos válidos', async () => {
+    // Primero autenticamos para obtener token
+    const authResponse = await request(app)
+      .post('/auth/login')
+      .send({ email: validUser.email, password: validUser.password })
       .expect(200);
 
-    expect(response.body).toHaveLength(sampleUsers.length);
+    const token = authResponse.body.token;
+
+    // Creamos proyecto usando fixture
+    const response = await request(app)
+      .post('/v1/projects')
+      .set('Authorization', `Bearer ${token}`)
+      .send(validProject)
+      .expect(201);
+
+    expect(response.body.title).toBe(validProject.title);
+    expect(response.body.description).toBe(validProject.description);
+    expect(response.body).toHaveProperty('_id');
+  });
+
+  it('debe listar todos los proyectos', async () => {
+    // Insertamos proyectos de muestra
+    for (const project of sampleProjects) {
+      await request(app)
+        .post('/v1/projects')
+        .send(project);
+    }
+
+    const response = await request(app)
+      .get('/v1/projects/')
+      .expect(200);
+
+    expect(response.body).toHaveLength(sampleProjects.length);
+    expect(response.body[0]).toHaveProperty('title');
   });
 
   // ==================== CUSTOMIZATION ====================
   
   it('debe personalizar fixture con overrides', () => {
-    // Podemos crear variaciones del mock fácilmente
-    const admin = createMockUser({ role: 'admin' });
-    const youngUser = createMockUser({ age: 20 });
-    const customUser = createMockUser({ 
-      name: 'Custom Name',
-      email: 'custom@example.com',
+    const customProject = createMockProject({ 
+      title: 'Custom Title',
+      tag: 'custom-tag',
     });
 
-    expect(admin.role).toBe('admin');
-    expect(youngUser.age).toBe(20);
-    expect(customUser.name).toBe('Custom Name');
+    expect(customProject.title).toBe('Custom Title');
+    expect(customProject.tag).toBe('custom-tag');
+    expect(customProject).toHaveProperty('_id'); // Auto-generado
+  });
+});
+```
+
+### Ejemplo 2: Tests de Componentes React con Fixtures
+
+```typescript
+import { render, screen, waitFor } from '@testing-library/react';
+import { ProjectList } from '../components/ProjectList';
+import { sampleProjects } from './fixtures/projects';
+import { server, http, HttpResponse } from '../mocks/server';
+
+describe('ProjectList con Fixtures', () => {
+  
+  it('debe mostrar proyectos usando fixtures', async () => {
+    // MSW interceptará la request y retornará nuestros fixtures
+    server.use(
+      http.get('/v1/projects/', () => {
+        return HttpResponse.json(sampleProjects);
+      })
+    );
+
+    render(<ProjectList />);
+
+    // Esperamos a que los proyectos se carguen
+    await waitFor(() => {
+      expect(screen.getByText('React Dashboard')).toBeInTheDocument();
+    });
+
+    // Verificamos que todos los proyectos del fixture aparecen
+    expect(screen.getByText('Vue Portfolio')).toBeInTheDocument();
+    expect(screen.getByText('Node API')).toBeInTheDocument();
+  });
+
+  it('debe manejar proyecto vacío', async () => {
+    server.use(
+      http.get('/v1/projects/', () => {
+        return HttpResponse.json([]); // Array vacío
+      })
+    );
+
+    render(<ProjectList />);
+
+    await waitFor(() => {
+      expect(screen.getByText(/no hay proyectos/i)).toBeInTheDocument();
+    });
   });
 });
 ```
@@ -273,46 +483,52 @@ Comparemos el **antes y después** de usar fixtures:
 
 ```typescript
 it('test 1', async () => {
-  const user = { email: 'john@example.com', name: 'John', age: 30, role: 'user' };
+  const project = { 
+    title: 'Test Project',
+    description: 'Description',
+    version: '1.0.0',
+    link: 'https://github.com/test',
+    tag: 'test',
+    timestamp: Date.now()
+  };
   // ...
 });
 
 it('test 2', async () => {
-  const user = { email: 'john@example.com', name: 'John', age: 30, role: 'user' };
-  // ...
-});
-
-it('test 3', async () => {
-  const user = { email: 'john@example.com', name: 'John', age: 30, role: 'user' };
+  const project = { 
+    title: 'Test Project',
+    description: 'Description',
+    version: '1.0.0',
+    link: 'https://github.com/test',
+    tag: 'test',
+    timestamp: Date.now()
+  };
   // ...
 });
 ```
 
 Problemas:
+
 - Repetición innecesaria (DRY violation)
-- Inconsistencias (¿todos tienen la misma edad?)
-- Difícil de mantener (cambiar estructura requiere tocar 3 lugares)
+- Inconsistencias (¿todos tienen el mismo timestamp?)
+- Difícil de mantener (cambiar estructura requiere tocar múltiples lugares)
 
 **✅ Con fixtures (código limpio)**:
 
 ```typescript
 it('test 1', async () => {
-  const response = await request(app).post('/api/users').send(validUser);
+  const response = await request(app).post('/v1/projects').send(validProject);
   // ...
 });
 
 it('test 2', async () => {
-  const response = await request(app).post('/api/users').send(validUser);
-  // ...
-});
-
-it('test 3', async () => {
-  const response = await request(app).post('/api/users').send(validUser);
+  const response = await request(app).post('/v1/projects').send(validProject);
   // ...
 });
 ```
 
 Ventajas:
+
 - Sin repetición
 - Perfectamente consistente
 - Un solo lugar para cambiar
@@ -325,226 +541,273 @@ Ventajas:
 
 Las **factory functions** son el siguiente nivel de fixtures. En lugar de objetos estáticos, creamos **funciones que generan datos**, lo que nos da:
 
-- **IDs únicos** automáticos
-- **Datos dinámicos** (fechas actuales, valores aleatorios)
-- **Secuencias** (user1, user2, user3...)
-- **Relaciones** entre entidades (users → posts → comments)
+- **IDs únicos** automáticos (_id de MongoDB)
+- **Datos dinámicos** (timestamps actuales, valores aleatorios)
+- **Secuencias** (project1, project2, project3...)
+- **Relaciones** entre entidades (user → projects)
 
-### Implementación: src/tests/factories/userFactory.ts
+### Implementación: src/tests/factories/
+
+#### projectFactory.ts
 
 ```typescript
+import { Project } from '@/model/project';
+
 // ==================== CONTADOR GLOBAL ====================
 
-// Mantiene track de IDs para generar valores únicos
-let userId = 1;
-let emailCounter = 1;
+let projectId = 1;
 
-// Reset para beforeEach en tests
-export function resetUserFactory() {
-  userId = 1;
-  emailCounter = 1;
+export function resetProjectFactory() {
+  projectId = 1;
 }
 
 // ==================== FACTORY BÁSICO ====================
 
 /**
- * Construye un usuario con valores por defecto razonables.
- * Cada llamada genera un usuario único (diferente ID y email).
+ * Construye un proyecto con valores por defecto razonables.
+ * Cada llamada genera un proyecto único.
  */
-export function buildUser(attrs: Partial<User> = {}): User {
-  const id = (userId++).toString();
-  const email = attrs.email || `user${emailCounter++}@example.com`;
+export function buildProject(attrs: Partial<Project> = {}): Project {
+  const id = `project-${projectId++}`;
   
   return {
-    id,
-    email,
-    name: attrs.name || `User ${id}`,
-    age: attrs.age || 25,
-    role: attrs.role || 'user',
-    createdAt: attrs.createdAt || new Date().toISOString(),
-    updatedAt: attrs.updatedAt || new Date().toISOString(),
-    ...attrs, // Overrides tienen prioridad
+    _id: id,
+    title: attrs.title || `Project ${projectId}`,
+    description: attrs.description || `Description for project ${projectId}`,
+    version: attrs.version || '1.0.0',
+    link: attrs.link || `https://github.com/user/${id}`,
+    tag: attrs.tag || 'general',
+    timestamp: attrs.timestamp || Date.now(),
+    ...attrs,
   };
 }
 
 // ==================== HELPERS DE BULK ====================
 
 /**
- * Crea N usuarios de forma eficiente.
- * Útil para tests que necesitan poblar la base de datos.
+ * Crea N proyectos de forma eficiente.
  */
-export function buildUsers(count: number, attrs: Partial<User> = {}): User[] {
-  return Array.from({ length: count }, () => buildUser(attrs));
+export function buildProjects(count: number, attrs: Partial<Project> = {}): Project[] {
+  return Array.from({ length: count }, () => buildProject(attrs));
 }
 
 /**
- * Crea usuarios con roles específicos.
+ * Crea proyectos con tags específicos.
  */
-export function buildAdmins(count: number): User[] {
-  return buildUsers(count, { role: 'admin' });
+export function buildEducationProjects(count: number): Project[] {
+  return buildProjects(count, { tag: 'education' });
 }
 
-export function buildModerators(count: number): User[] {
-  return buildUsers(count, { role: 'moderator' });
-}
-
-// ==================== FACTORIES CON RELACIONES ====================
-
-/**
- * Crea un usuario con posts asociados.
- * Demuestra cómo manejar relaciones entre entidades.
- */
-export function buildUserWithPosts(postCount: number = 3) {
-  const user = buildUser();
-  const posts = Array.from({ length: postCount }, (_, i) => ({
-    id: (i + 1).toString(),
-    title: `Post ${i + 1}`,
-    content: `Content for post ${i + 1}`,
-    authorId: user.id,
-    createdAt: new Date().toISOString(),
-  }));
-  
-  return { user, posts };
+export function buildReactProjects(count: number): Project[] {
+  return buildProjects(count, { tag: 'react' });
 }
 
 // ==================== FACTORIES CON ESTADOS ESPECÍFICOS ====================
 
 /**
- * Crea un usuario "completo" con todos los campos opcionales llenos.
+ * Crea un proyecto "completo" con todos los campos llenos.
  */
-export function buildCompleteUser(): User {
-  return buildUser({
-    bio: 'This is my bio',
-    avatar: 'https://example.com/avatar.jpg',
-    verified: true,
-    lastLogin: new Date().toISOString(),
-    preferences: {
-      theme: 'dark',
-      notifications: true,
-    },
+export function buildCompleteProject(): Project {
+  return buildProject({
+    title: 'Complete Project',
+    description: 'A fully detailed project with all fields',
+    version: '2.5.3',
+    link: 'https://github.com/complete/project',
+    tag: 'featured',
   });
 }
 
 /**
- * Crea un usuario en estado "pendiente de verificación".
+ * Crea un proyecto reciente (timestamp muy actual).
  */
-export function buildPendingUser(): User {
-  return buildUser({
-    verified: false,
-    verificationToken: 'abc123',
-    verificationSentAt: new Date().toISOString(),
+export function buildRecentProject(): Project {
+  return buildProject({
+    timestamp: Date.now(),
   });
 }
+
+/**
+ * Crea un proyecto antiguo (timestamp de hace meses).
+ */
+export function buildOldProject(): Project {
+  return buildProject({
+    timestamp: Date.now() - 7776000000, // 90 días atrás
+  });
+}
+```
+
+#### userFactory.ts
+
+```typescript
+import { IUserModel } from '@/components/User/model';
+
+let userId = 1;
+
+export function resetUserFactory() {
+  userId = 1;
+}
+
+/**
+ * Construye un usuario con valores por defecto.
+ */
+export function buildUser(attrs: Partial<IUserModel> = {}): Partial<IUserModel> {
+  const id = `user-${userId++}`;
+  const email = attrs.email || `user${userId}@example.com`;
+  
+  return {
+    _id: id,
+    email,
+    password: attrs.password || 'SecurePassword123!',
+    ...attrs,
+  };
+}
+
+/**
+ * Crea N usuarios.
+ */
+export function buildUsers(count: number, attrs: Partial<IUserModel> = {}): Partial<IUserModel>[] {
+  return Array.from({ length: count }, () => buildUser(attrs));
+}
+
+/**
+ * Usuario con token de reset activo.
+ */
+export function buildUserWithResetToken(): Partial<IUserModel> {
+  return buildUser({
+    passwordResetToken: `reset-${Date.now()}`,
+    passwordResetExpires: new Date(Date.now() + 3600000), // 1 hora
+  });
+}
+```
 ```
 
 ### Uso de Factories en Tests
 
 ```typescript
 import { 
-  buildUser, 
-  buildUsers, 
-  buildAdmins,
-  buildUserWithPosts,
-  resetUserFactory 
-} from './factories/userFactory';
+  buildProject, 
+  buildProjects, 
+  buildEducationProjects,
+  buildRecentProject,
+  buildOldProject,
+  resetProjectFactory 
+} from './factories/projectFactory';
+import { buildUser, buildUsers, resetUserFactory } from './factories/userFactory';
 
-describe('User Factory Examples', () => {
+describe('Factory Examples del Proyecto', () => {
   
   beforeEach(() => {
-    resetUserFactory(); // IDs comienzan desde 1 en cada test
+    resetProjectFactory();
+    resetUserFactory();
   });
 
   // ==================== FACTORY BÁSICO ====================
   
-  it('debe crear usuario con valores por defecto', () => {
-    const user = buildUser();
+  it('debe crear proyecto con valores por defecto', () => {
+    const project = buildProject();
     
-    expect(user).toHaveProperty('id');
-    expect(user).toHaveProperty('email');
-    expect(user.name).toMatch(/User \d+/);
+    expect(project).toHaveProperty('_id');
+    expect(project).toHaveProperty('title');
+    expect(project.version).toBe('1.0.0');
   });
 
-  it('debe generar IDs y emails únicos', () => {
-    const user1 = buildUser();
-    const user2 = buildUser();
-    const user3 = buildUser();
+  it('debe generar IDs únicos', () => {
+    const project1 = buildProject();
+    const project2 = buildProject();
+    const project3 = buildProject();
     
-    // Cada usuario tiene ID único
-    expect(user1.id).toBe('1');
-    expect(user2.id).toBe('2');
-    expect(user3.id).toBe('3');
-    
-    // Cada usuario tiene email único
-    expect(user1.email).toBe('user1@example.com');
-    expect(user2.email).toBe('user2@example.com');
-    expect(user3.email).toBe('user3@example.com');
+    expect(project1._id).toBe('project-1');
+    expect(project2._id).toBe('project-2');
+    expect(project3._id).toBe('project-3');
   });
 
   it('debe permitir customización con overrides', () => {
-    const admin = buildUser({ 
-      role: 'admin',
-      name: 'Admin User' 
+    const customProject = buildProject({ 
+      title: 'Custom Title',
+      tag: 'react',
+      version: '2.0.0'
     });
     
-    expect(admin.role).toBe('admin');
-    expect(admin.name).toBe('Admin User');
-    expect(admin).toHaveProperty('id'); // Otros campos siguen auto-generados
+    expect(customProject.title).toBe('Custom Title');
+    expect(customProject.tag).toBe('react');
+    expect(customProject.version).toBe('2.0.0');
+    expect(customProject).toHaveProperty('_id'); // Auto-generado
   });
 
   // ==================== BULK CREATION ====================
   
-  it('debe crear múltiples usuarios rápidamente', () => {
-    const users = buildUsers(10);
+  it('debe crear múltiples proyectos rápidamente', () => {
+    const projects = buildProjects(10);
     
-    expect(users).toHaveLength(10);
-    expect(users[0].id).toBe('1');
-    expect(users[9].id).toBe('10');
+    expect(projects).toHaveLength(10);
+    expect(projects[0]._id).toBe('project-1');
+    expect(projects[9]._id).toBe('project-10');
   });
 
-  it('debe crear usuarios con atributos compartidos', () => {
-    const youngUsers = buildUsers(5, { age: 20 });
+  it('debe crear proyectos con atributos compartidos', () => {
+    const reactProjects = buildProjects(5, { tag: 'react' });
     
-    youngUsers.forEach(user => {
-      expect(user.age).toBe(20); // Todos tienen 20 años
-      expect(user.id).toBeTruthy(); // Pero IDs únicos
+    reactProjects.forEach(project => {
+      expect(project.tag).toBe('react');
+      expect(project._id).toBeTruthy(); // IDs únicos
     });
   });
 
-  it('debe crear admins fácilmente', () => {
-    const admins = buildAdmins(3);
+  it('debe crear proyectos educativos fácilmente', () => {
+    const eduProjects = buildEducationProjects(3);
     
-    admins.forEach(admin => {
-      expect(admin.role).toBe('admin');
+    eduProjects.forEach(project => {
+      expect(project.tag).toBe('education');
     });
   });
 
-  // ==================== RELACIONES ====================
+  // ==================== ESTADOS ESPECÍFICOS ====================
   
-  it('debe crear usuario con posts relacionados', () => {
-    const { user, posts } = buildUserWithPosts(5);
+  it('debe crear proyectos con diferentes timestamps', () => {
+    const recentProject = buildRecentProject();
+    const oldProject = buildOldProject();
     
-    expect(posts).toHaveLength(5);
+    const daysDiff = (recentProject.timestamp - oldProject.timestamp) / (1000 * 60 * 60 * 24);
     
-    // Verificar relación: todos los posts tienen el authorId correcto
-    posts.forEach(post => {
-      expect(post.authorId).toBe(user.id);
-    });
+    expect(daysDiff).toBeGreaterThan(80); // ~90 días de diferencia
   });
 
   // ==================== TESTS DE INTEGRACIÓN ====================
   
   it('debe popular base de datos para test de integración', async () => {
-    // Creamos escenario completo: 2 admins, 5 users, 10 moderators
-    const admins = buildAdmins(2);
-    const users = buildUsers(5);
-    const moderators = buildModerators(10);
+    // Creamos escenario completo: usuarios y proyectos
+    const users = buildUsers(3);
+    const eduProjects = buildEducationProjects(5);
+    const reactProjects = buildReactProjects(7);
     
-    // En un test real, insertaríamos esto en la DB
-    const allUsers = [...admins, ...users, ...moderators];
+    const allProjects = [...eduProjects, ...reactProjects];
     
-    expect(allUsers).toHaveLength(17);
-    expect(allUsers.filter(u => u.role === 'admin')).toHaveLength(2);
-    expect(allUsers.filter(u => u.role === 'moderator')).toHaveLength(10);
+    expect(allProjects).toHaveLength(12);
+    expect(allProjects.filter(p => p.tag === 'education')).toHaveLength(5);
+    expect(allProjects.filter(p => p.tag === 'react')).toHaveLength(7);
+  });
+
+  // ==================== API TESTS CON FACTORIES ====================
+  
+  it('debe usar factories en tests de API', async () => {
+    const user = buildUser();
+    const project = buildProject({ title: 'API Test Project' });
+    
+    // Simular autenticación
+    const authResponse = await request(app)
+      .post('/auth/login')
+      .send({ email: user.email, password: user.password });
+    
+    const token = authResponse.body.token;
+    
+    // Crear proyecto
+    const response = await request(app)
+      .post('/v1/projects')
+      .set('Authorization', `Bearer ${token}`)
+      .send(project)
+      .expect(201);
+    
+    expect(response.body.title).toBe('API Test Project');
   });
 });
 ```
@@ -556,9 +819,34 @@ describe('User Factory Examples', () => {
 | **Simplicidad** | ✅ Muy simple | ⚠️ Más complejo |
 | **Flexibilidad** | ⚠️ Datos fijos | ✅ Datos dinámicos |
 | **IDs únicos** | ❌ Requiere trabajo manual | ✅ Automático |
-| **Bulk creation** | ⚠️ Hay que duplicar | ✅ `buildUsers(100)` |
+| **Bulk creation** | ⚠️ Hay que duplicar | ✅ `buildProjects(100)` |
 | **Relaciones** | ❌ Difícil | ✅ Fácil con helpers |
 | **Cuándo usar** | Tests simples, datos conocidos | Tests complejos, datos variables |
+
+### Best Practices con Factories
+
+```typescript
+// ✅ HACER: Reset en beforeEach
+beforeEach(() => {
+  resetProjectFactory();
+  resetUserFactory();
+});
+
+// ✅ HACER: Nombres descriptivos
+const recentProject = buildRecentProject();
+const oldProject = buildOldProject();
+
+// ✅ HACER: Factories especializados
+export function buildFeaturedProject() {
+  return buildProject({ tag: 'featured', version: '2.0.0' });
+}
+
+// ❌ EVITAR: Factories con lógica compleja
+// Si tu factory tiene más de 20 líneas, probablemente está haciendo demasiado
+
+// ❌ EVITAR: State global sin reset
+// Siempre proporciona una función reset
+```
 
 ### Best Practices con Factories
 
@@ -611,15 +899,52 @@ export function buildAdmin() {
 
 ## Resumen
 
-En esta sección aprendimos:
+En esta sección aprendimos sobre fixtures y datos de prueba aplicados al **Taller Testing & Security**:
 
-1. **Qué son fixtures**: Datos predefinidos reutilizables para tests
-2. **Beneficios**: Reducen duplicación, mejoran consistencia, facilitan mantenimiento
+1. **Qué son fixtures**: Datos predefinidos reutilizables basados en los modelos reales del proyecto
+   - **User**: Email, password, tokens de reset
+   - **Project**: Title, description, version, link, tag, timestamp
+   - **AboutMe**: Name, birthday, nationality, job, github
+
+2. **Beneficios**: 
+   - Reducen duplicación de código en tests
+   - Mejoran consistencia usando los modelos exactos
+   - Facilitan mantenimiento con un solo punto de cambio
+
 3. **Fixtures estáticos**: Ideales para casos simples y datos conocidos
-4. **Factory functions**: Perfectos para datos dinámicos, IDs únicos, y relaciones
-5. **Best practices**: Organización clara, type safety, reset entre tests
+   - `validUser`, `validProject`, `validAboutMe`
+   - `invalidUsers`, `invalidProjects` para tests de validación
+   - `sampleProjects` para poblar datos de prueba
+
+4. **Factory functions**: Perfectos para datos dinámicos e IDs únicos
+   - `buildProject()`, `buildUser()`, `buildAboutMe()`
+   - Generan `_id` únicos automáticamente
+   - Permiten overrides para personalización
+   - Helpers de bulk: `buildProjects(10)`, `buildEducationProjects(5)`
+
+5. **Best practices**: 
+   - Organización clara por modelo
+   - Type safety con TypeScript
+   - Reset de factories entre tests
+   - Fixtures especializados por escenario (`buildRecentProject`, `buildOldProject`)
+
+### Aplicación en el Proyecto
+
+Los fixtures del proyecto cubren:
+
+- **Tests de API**: Validación de endpoints `/v1/users`, `/v1/projects/`, `/v1/aboutme/`
+- **Tests de componentes**: Mock data para MSW y React Testing Library
+- **Tests de integración**: Población de datos para escenarios completos
+- **Tests de autenticación**: Usuarios con tokens JWT
 
 :::info Próximo paso
-En la siguiente sección veremos **Mock Service Worker (MSW)**, una herramienta para mockear APIs a nivel de red, proporcionando tests aún más realistas.
+En la siguiente sección **Mock Service Worker (MSW)**, usaremos estos fixtures para crear handlers realistas que interceptan requests HTTP y retornan datos consistentes.
 :::
+
+---
+
+**Referencias del Proyecto**:
+- Modelos: `ui/src/model/` (Project, AboutMe)
+- Backend: `api/src/components/User/model.ts` (IUserModel)
+- Endpoints: `/v1/projects/`, `/v1/aboutme/`, `/auth/login`
 
