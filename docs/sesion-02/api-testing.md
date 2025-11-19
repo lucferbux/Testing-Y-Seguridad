@@ -425,6 +425,9 @@ module.exports = {
     '!src/**/*.test.ts',
     '!src/tests/**'
   ],
+  moduleNameMapper: {
+    '^@/(.*)$': '<rootDir>/src/$1',
+  },
   coverageThreshold: {
     global: {
       branches: 80,
@@ -442,15 +445,16 @@ module.exports = {
 import { MongoMemoryServer } from 'mongodb-memory-server';
 import mongoose from 'mongoose';
 
-let mongoServer: MongoMemoryServer;
-
 export default async function globalSetup() {
   // Crear servidor MongoDB en memoria
-  mongoServer = await MongoMemoryServer.create();
+  const mongoServer = await MongoMemoryServer.create();
   const mongoUri = mongoServer.getUri();
   
   // Guardar URI para tests individuales
   process.env.MONGO_URI = mongoUri;
+  
+  // Guardar instancia para teardown
+  (global as any).__MONGO_SERVER__ = mongoServer;
   
   // Conectar Mongoose
   await mongoose.connect(mongoUri);
@@ -461,15 +465,16 @@ export default async function globalSetup() {
 
 ```typescript
 import mongoose from 'mongoose';
-import { MongoMemoryServer } from 'mongodb-memory-server';
 
 export default async function globalTeardown() {
   // Desconectar Mongoose
   await mongoose.disconnect();
   
   // Parar servidor MongoDB
-  const mongoServer = await MongoMemoryServer.create();
-  await mongoServer.stop();
+  const mongoServer = (global as any).__MONGO_SERVER__;
+  if (mongoServer) {
+    await mongoServer.stop();
+  }
 }
 ```
 
@@ -477,18 +482,19 @@ export default async function globalTeardown() {
 
 ```typescript
 import mongoose from 'mongoose';
-import { UserModel } from '../components/User/model';
+import UserModel from '../components/User/model';
 
 /**
  * Limpia todas las colecciones de la base de datos
  */
-export async function clearDatabase() {
+export const clearDatabase = async () => {
   const collections = mongoose.connection.collections;
-  
   for (const key in collections) {
-    await collections[key].deleteMany({});
+    const collection = collections[key];
+    await collection.deleteMany({});
   }
-}
+  console.log('Database cleared. Collections:', Object.keys(collections));
+};
 
 /**
  * Crea usuarios de prueba
@@ -550,8 +556,6 @@ Para verificar que todo está configurado correctamente:
 4. **Tests subsecuentes**: Deben ser muy rápidos (&lt;100ms cada uno)
 
 :::
-
-
 
 ## Tests de Integración de API
 

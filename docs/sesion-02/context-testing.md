@@ -301,21 +301,28 @@ function renderWithProviders(ui: React.ReactElement) {
 
 Primero testeamos el Context más simple para entender los conceptos básicos:
 
+#### Código: ui/src/__test__/context/ProjectContext.spec.tsx
+
 ```tsx
+import React from 'react';
 import { render, screen, fireEvent } from '@testing-library/react';
 import { ProjectProvider } from '../../context/ProjectContext';
-import { useProject } from '../../hooks/useProject';
+import useProject from '../../hooks/useProject';
 import { Project } from '../../model/project';
 
 // Componente de prueba que consume ProjectContext
 function ProjectDisplay() {
   const { project, addProject, removeProject } = useProject();
-  
+
   const handleAdd = () => {
     const newProject: Project = {
       _id: '123',
       title: 'Test Project',
-      description: 'A test project'
+      description: 'A test project',
+      version: '',
+      link: '',
+      tag: '',
+      timestamp: 0
     };
     addProject(newProject);
   };
@@ -339,14 +346,13 @@ function ProjectDisplay() {
 }
 
 describe('ProjectContext Integration', () => {
-  
   it('debe iniciar sin proyecto', () => {
     render(
       <ProjectProvider>
         <ProjectDisplay />
       </ProjectProvider>
     );
-    
+
     expect(screen.getByText('No project')).toBeInTheDocument();
   });
 
@@ -356,10 +362,10 @@ describe('ProjectContext Integration', () => {
         <ProjectDisplay />
       </ProjectProvider>
     );
-    
+
     // Click en agregar
     fireEvent.click(screen.getByText('Add Project'));
-    
+
     // Verificamos que el proyecto se agregó
     expect(screen.getByText('Test Project')).toBeInTheDocument();
     expect(screen.getByText('A test project')).toBeInTheDocument();
@@ -371,11 +377,11 @@ describe('ProjectContext Integration', () => {
         <ProjectDisplay />
       </ProjectProvider>
     );
-    
+
     // Agregamos proyecto
     fireEvent.click(screen.getByText('Add Project'));
     expect(screen.getByText('Test Project')).toBeInTheDocument();
-    
+
     // Removemos proyecto
     fireEvent.click(screen.getByText('Remove Project'));
     expect(screen.getByText('No project')).toBeInTheDocument();
@@ -408,10 +414,13 @@ Pero en integración **usamos el Provider real** para verificar que la integraci
 
 AuthContext es más complejo porque maneja **operaciones asíncronas** y **llamadas API**. Necesitamos mockear las dependencias externas pero usar el Context real:
 
+#### Código: ui/src/__test__/context/AuthContext.spec.tsx
+
 ```tsx
+import '@testing-library/jest-dom';
 import { render, screen, waitFor, fireEvent } from '@testing-library/react';
 import { AuthProvider } from '../../context/AuthContext';
-import { useAuth } from '../../hooks/useAuth';
+import useAuth from '../../hooks/useAuth';
 import * as authUtils from '../../utils/auth';
 import createApiClient from '../../api/api-client-factory';
 
@@ -423,8 +432,12 @@ jest.mock('../../api/api-client-factory');
 function AuthStatus() {
   const { user, isLoading, login, logout } = useAuth();
   
-  const handleLogin = () => {
-    login('testuser', 'password123');
+  const handleLogin = async () => {
+    try {
+      await login('testuser', 'password123');
+    } catch (error) {
+      // Ignoramos el error ya que es esperado en el test de error
+    }
   };
 
   if (isLoading) {
@@ -558,78 +571,6 @@ describe('AuthContext Integration', () => {
 3. **Operaciones asíncronas**: Usamos `waitFor` para esperar cambios de estado
 4. **Configuración de estado inicial**: Podemos simular usuario ya logueado con `mockReturnValue`
 
-### Test 3: Múltiples consumidores compartiendo Context
-
-Un test importante es verificar que **múltiples componentes** pueden compartir el mismo Context y sincronizarse correctamente:
-
-```tsx
-function UserDisplay() {
-  const { user } = useAuth();
-  return <div>{user ? `Logged as: ${user.email}` : 'Not logged'}</div>;
-}
-
-function LoginButton() {
-  const { login, isLoading } = useAuth();
-  
-  return (
-    <button 
-      onClick={() => login('user@test.com', 'pass123')}
-      disabled={isLoading}
-    >
-      {isLoading ? 'Logging in...' : 'Login'}
-    </button>
-  );
-}
-
-describe('Multiple consumers sharing AuthContext', () => {
-  
-  beforeEach(() => {
-    jest.clearAllMocks();
-    (authUtils.getCurrentUser as jest.Mock).mockReturnValue(undefined);
-    (authUtils.isTokenActive as jest.Mock).mockReturnValue(false);
-    
-    const mockUser = { _id: '1', email: 'user@test.com', active: true };
-    const mockToken = jest.fn().mockResolvedValue({ token: 'token' });
-    (createApiClient as jest.Mock).mockReturnValue({ token: mockToken });
-    (authUtils.getCurrentUser as jest.Mock).mockReturnValue(mockUser);
-  });
-
-  it('debe sincronizar múltiples componentes', async () => {
-    render(
-      <AuthProvider>
-        <UserDisplay />
-        <LoginButton />
-      </AuthProvider>
-    );
-    
-    // Estado inicial: ambos componentes muestran "no logueado"
-    expect(screen.getByText('Not logged')).toBeInTheDocument();
-    expect(screen.getByText('Login')).toBeInTheDocument();
-    
-    // Click en login desde LoginButton
-    fireEvent.click(screen.getByText('Login'));
-    
-    // Ambos componentes deben mostrar estado de carga
-    expect(screen.getByText('Logging in...')).toBeInTheDocument();
-    
-    // Después del login, UserDisplay debe actualizarse automáticamente
-    await waitFor(() => {
-      expect(screen.getByText('Logged as: user@test.com')).toBeInTheDocument();
-    });
-    
-    // Y LoginButton debe volver al estado normal
-    expect(screen.getByText('Login')).toBeInTheDocument();
-    expect(screen.getByRole('button')).not.toBeDisabled();
-  });
-});
-```
-
-**¿Por qué este test es valioso?**
-
-- Verifica que el Context **realmente comparte estado** entre componentes
-- Detecta problemas de sincronización o renders innecesarios
-- Simula cómo se usa el Context en la aplicación real (múltiples componentes consumiendo)
-
 ## Ejemplo Complejo: Testing con Formularios
 
 El siguiente patrón común es testar formularios que usan Context. Veamos un componente de login más real con formulario controlado:
@@ -638,7 +579,7 @@ El siguiente patrón común es testar formularios que usan Context. Veamos un co
 
 ```tsx
 import React, { useState } from 'react';
-import { useAuth } from '../hooks/useAuth';
+import useAuth from '../hooks/useAuth';
 
 export function LoginForm() {
   // Estado local del formulario
@@ -718,10 +659,11 @@ Este componente demuestra **varios patrones importantes**:
 ## Tests completos del LoginForm
 
 ```tsx
+import '@testing-library/jest-dom';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { AuthProvider } from '../../context/AuthContext';
-import { LoginForm } from '../LoginForm';
+import { LoginForm } from '../../components/LoginForm';
 import * as authUtils from '../../utils/auth';
 import createApiClient from '../../api/api-client-factory';
 
@@ -830,7 +772,7 @@ describe('LoginForm Integration', () => {
 
    - Botón deshabilitado durante loading
    - Texto del botón cambia
-- Focus/blur automático
+   - Focus/blur automático
 
 3. **Manejo de Promises demoradas**:
 
@@ -897,42 +839,3 @@ const welcome = await screen.findByText('Welcome!');  // Espera hasta que aparez
 3. **No limpiar estado entre tests**: Los tests se afectan mutuamente
 4. **No mockear dependencias externas**: Los tests fallan por problemas de red/API
 :::
-
-## Resumen: Context Testing Best Practices
-
-Hemos cubierto testing de **AuthContext** y **ProjectContext** del proyecto Taller-Testing-Security. Estos son los patrones clave:
-
-| Concepto | Descripción | Ejemplo |
-|----------|-------------|---------|
-| **Helper de renderizado** | Función que envuelve componentes con Provider | `renderWithAuth(<Component />)` |
-| **Mock de dependencias externas** | Mockear APIs/utils, no el Context | `jest.mock('../../utils/auth')` |
-| **waitFor para async** | Esperar cambios de estado asíncronos | `await waitFor(() => expect(...))` |
-| **queryBy para ausencia** | Verificar que elementos NO existen | `expect(screen.queryByText(...)).not.toBeInTheDocument()` |
-| **userEvent para interacciones** | Simular typing y clicks realistas | `await user.type(input, 'text')` |
-| **beforeEach para limpieza** | Resetear mocks entre tests | `jest.clearAllMocks()` |
-
-### Tests del proyecto cubiertos
-
-| Context | Tests realizados | Conceptos validados |
-|---------|-----------------|---------------------|
-| **ProjectContext** | Agregar/remover proyecto | Estado inicial, mutaciones, sincronización |
-| **AuthContext** | Login, logout, estados de carga | Async, mocks, loading states, múltiples consumidores |
-| **LoginForm** | Formulario completo con Context | userEvent, validaciones, estados de UI |
-
-### Checklist de testing con Context
-
-Al testear componentes con Context, asegúrate de:
-
-- ✅ Usar el Provider real (no mockear el Context)
-- ✅ Mockear **solo** dependencias externas (APIs, localStorage, etc.)
-- ✅ Testear estado inicial del Provider
-- ✅ Verificar sincronización entre múltiples consumidores
-- ✅ Probar manejo de errores (API failures, validaciones)
-- ✅ Validar estados de carga (isLoading, spinners, botones deshabilitados)
-- ✅ Usar `waitFor` para operaciones asíncronas
-- ✅ Limpiar mocks con `beforeEach`
-
-:::tip Próximos pasos
-En la siguiente sección (`msw.md`) veremos cómo usar **Mock Service Worker** para simular APIs completas sin mockear funciones individuales. Esto nos permitirá testear flujos end-to-end con datos realistas.
-:::
-

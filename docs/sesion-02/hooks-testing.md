@@ -35,17 +35,7 @@ Los custom hooks encapsulan **lógica reutilizable** que puede ser crítica para
 
 ## React Hooks Testing Library
 
-Para testear hooks necesitamos una librería especializada porque **no podemos llamar hooks directamente** en JavaScript regular (solo funcionan dentro de componentes React).
-
-### Instalación
-
-```bash
-npm install --save-dev @testing-library/react-hooks
-```
-
-:::info Nota importante
-A partir de **React Testing Library v13+**, `renderHook` está incluido en `@testing-library/react`, por lo que ya no necesitas instalar el paquete separado. Sin embargo, la API es la misma.
-:::
+Para testear hooks necesitamos una librería especializada porque **no podemos llamar hooks directamente** en JavaScript regular (solo funcionan dentro de componentes React), para ello usaremos `renderHook` dentro de `react-testing-library`.
 
 ### Conceptos clave
 
@@ -175,11 +165,13 @@ import useAuth from '../useAuth';
 import AuthContext from '../../context/AuthContext';
 import { ReactNode } from 'react';
 
+jest.mock('../../api/api-client-factory');
+
 describe('useAuth', () => {
   it('debe retornar el contexto de autenticación', () => {
     // Mock del valor del context
     const mockContextValue = {
-      user: { id: '1', email: 'test@example.com' },
+      user: { _id: '1', email: 'test@example.com', active: true },
       isLoading: false,
       login: jest.fn(),
       logout: jest.fn(),
@@ -251,11 +243,10 @@ const mockContextValue = {
 ```
 
 **Ventajas**:
+
 - Control total sobre el estado del context
 - Podemos verificar que las funciones se llaman correctamente
 - No dependemos de la implementación real del AuthContext
-
-
 
 ## Ejemplo 2: useFetchData Hook (Async + Effects)
 
@@ -317,7 +308,7 @@ export default function useFetchData<T>(
 ### Test: ui/src/hooks/\_\_tests\_\_/useFetchData.test.tsx
 
 ```typescript
-import { renderHook, waitFor } from '@testing-library/react';
+import { renderHook, waitFor, act } from '@testing-library/react';
 import useFetchData from '../useFetchData';
 import { GenericError } from '../../api/api-client';
 
@@ -525,7 +516,7 @@ export function useCreateOrUpdate<T>(
 ### Test: ui/src/hooks/\_\_tests\_\_/useCreateOrUpdate.test.tsx
 
 ```typescript
-import { renderHook, waitFor } from '@testing-library/react';
+import { renderHook, waitFor, act } from '@testing-library/react';
 import { useCreateOrUpdate } from '../useCreateOrUpdateProject';
 import { ProjectResponse } from '../../api/api-client';
 
