@@ -418,7 +418,7 @@ module.exports = {
   // MongoDB Memory Server
   globalSetup: './src/tests/setup.ts',
   globalTeardown: './src/tests/teardown.ts',
-
+  
   // Run tests sequentially to avoid shared DB conflicts
   maxWorkers: 1,
   
@@ -500,7 +500,7 @@ export const clearDatabase = async () => {
 /**
  * Crea usuarios de prueba
  */
-export async function seedUsers(users: Array<{ name: string; email: string; password: string }>) {
+export async function seedUsers(users: Array<{ email: string; password: string }>) {
   const createdUsers = [];
   
   for (const user of users) {
@@ -562,7 +562,7 @@ Para verificar que todo está configurado correctamente:
 
 Ahora vamos a testear toda la API de forma exhaustiva usando **MongoDB Memory Server**.
 
-### Test Completo: api/src/tests/User.integration.test.ts
+### Test Completo: api/src/routes/tests/User.integration.test.ts
 
 ```typescript
 import request from 'supertest';
