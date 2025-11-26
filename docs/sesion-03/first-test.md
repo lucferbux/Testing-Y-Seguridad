@@ -633,6 +633,175 @@ Ahora que dominas los tests básicos, avanza a:
 :::tip Práctica
 Escribe 3-5 tests para tu homepage antes de continuar. La práctica es clave para dominar Cypress.
 :::
+
+---
+
+## Ejemplo Real: Proyecto Taller-Testing-Security
+
+Veamos cómo se aplican estos conceptos en el proyecto real **Taller-Testing-Security**:
+
+### Test de Landing Page
+
+```typescript
+// cypress/e2e/landing.cy.ts
+
+describe('Landing Page', () => {
+  
+  beforeEach(() => {
+    cy.visit('/');
+  });
+
+  it('debe cargar la landing page correctamente', () => {
+    // Verificar que estamos en la landing
+    cy.url().should('eq', Cypress.config().baseUrl + '/');
+    
+    // La landing tiene un título h1
+    cy.get('h1').should('be.visible');
+  });
+
+  it('debe mostrar el header con navegación', () => {
+    // Verificar links de navegación
+    cy.contains(/home|inicio/i).should('be.visible');
+    cy.contains(/dashboard/i).should('be.visible');
+    cy.contains(/admin/i).should('be.visible');
+  });
+
+  it('debe permitir navegar al dashboard', () => {
+    // Mockear APIs antes de navegar
+    cy.intercept('GET', '**/v1/aboutme/', { fixture: 'aboutme.json' }).as('getAboutMe');
+    cy.intercept('GET', '**/v1/projects/', { fixture: 'projects.json' }).as('getProjects');
+    
+    // Click en el link del dashboard
+    cy.contains(/dashboard/i).click();
+    
+    // Verificar que navegamos correctamente
+    cy.url().should('include', '/dashboard');
+  });
+});
+```
+
+### Test de Login Page
+
+```typescript
+// cypress/e2e/auth/login.cy.ts
+
+describe('Login Page', () => {
+  
+  beforeEach(() => {
+    cy.visit('/login');
+  });
+
+  describe('UI Elements', () => {
+    
+    it('debe mostrar el formulario de login correctamente', () => {
+      // Verificar elementos del formulario
+      cy.get('input[name="email"]').should('be.visible');
+      cy.get('input[name="password"]').should('be.visible');
+      cy.get('input[type="submit"]').should('be.visible');
+    });
+  });
+
+  describe('Validación de Formulario', () => {
+    
+    it('debe mostrar error cuando los campos están vacíos', () => {
+      // Submit sin llenar campos
+      cy.get('input[type="submit"]').click();
+      
+      // Verificar mensaje de error
+      cy.contains(/username|password|email|usuario|contraseña/i).should('be.visible');
+    });
+  });
+
+  describe('Login con API Mockeada', () => {
+    
+    it('debe hacer login exitoso y redirigir a /admin', () => {
+      // Mockear respuesta exitosa
+      cy.intercept('POST', '**/auth/login', {
+        statusCode: 200,
+        body: { token: 'test-jwt-token' }
+      }).as('loginSuccess');
+      
+      // Llenar formulario
+      cy.get('input[name="email"]').type('test@example.com');
+      cy.get('input[name="password"]').type('password123');
+      cy.get('input[type="submit"]').click();
+      
+      // Esperar respuesta
+      cy.wait('@loginSuccess');
+      
+      // Verificar redirección
+      cy.url().should('include', '/admin');
+      
+      // Verificar token guardado
+      cy.window().its('localStorage.token').should('eq', 'test-jwt-token');
+    });
+
+    it('debe mostrar error con credenciales inválidas', () => {
+      // Mockear error de autenticación
+      cy.intercept('POST', '**/auth/login', {
+        statusCode: 401,
+        body: { error: 'Invalid credentials' }
+      }).as('loginError');
+      
+      // Llenar formulario con datos incorrectos
+      cy.get('input[name="email"]').type('wrong@example.com');
+      cy.get('input[name="password"]').type('wrongpassword');
+      cy.get('input[type="submit"]').click();
+      
+      cy.wait('@loginError');
+      
+      // Verificar que seguimos en login
+      cy.url().should('include', '/login');
+      
+      // Verificar mensaje de error
+      cy.contains(/invalid|error|inválid/i).should('be.visible');
+    });
+  });
+});
+```
+
+### Fixtures del Proyecto
+
+```json
+// cypress/fixtures/users.json
+{
+  "validUser": {
+    "email": "test@example.com",
+    "password": "test123"
+  },
+  "invalidUser": {
+    "email": "wrong@example.com",
+    "password": "wrongpass"
+  }
+}
+```
+
+```json
+// cypress/fixtures/aboutme.json
+{
+  "_id": "507f1f77bcf86cd799439011",
+  "name": "Lucas Fernandez",
+  "birthday": 631152000000,
+  "nationality": "Spanish",
+  "job": "Software Developer",
+  "github": "https://github.com/lucferbux"
+}
+```
+
+```json
+// cypress/fixtures/projects.json
+[
+  {
+    "_id": "507f1f77bcf86cd799439012",
+    "title": "Taller Testing & Security",
+    "description": "Proyecto educativo sobre testing y seguridad",
+    "version": "1.0.0",
+    "link": "https://github.com/lucferbux/Taller-Testing-Security",
+    "tag": "education",
+    "timestamp": 1700000000000
+  }
+]
+```
 ```
 
 ## Ejecutar Tests

@@ -597,6 +597,216 @@ jobs:
 
 ---
 
+## Ejemplo Real: Proyecto Taller-Testing-Security
+
+A continuación se muestra la configuración real implementada en el proyecto **Taller-Testing-Security/ui**.
+
+### Estructura de Archivos Creada
+
+```
+ui/
+├── cypress/
+│   ├── e2e/
+│   │   ├── auth/
+│   │   │   └── login.cy.ts        # Tests de autenticación
+│   │   ├── dashboard/
+│   │   │   └── dashboard.cy.ts    # Tests del dashboard
+│   │   └── flows/
+│   │       └── user-journey.cy.ts # Tests de flujos completos
+│   ├── fixtures/
+│   │   ├── users.json             # Datos de usuarios mock
+│   │   ├── aboutme.json           # Datos de perfil mock
+│   │   └── projects.json          # Datos de proyectos mock
+│   ├── support/
+│   │   ├── commands.ts            # Custom commands
+│   │   └── e2e.ts                 # Setup global
+│   └── tsconfig.json              # Config TypeScript para Cypress
+└── cypress.config.ts              # Configuración principal
+```
+
+### cypress.config.ts (Real)
+
+```typescript
+import { defineConfig } from 'cypress';
+
+export default defineConfig({
+  e2e: {
+    // URL base de la aplicación (Vite dev server)
+    baseUrl: 'http://127.0.0.1:5173',
+    
+    // Configuración de viewports
+    viewportWidth: 1280,
+    viewportHeight: 720,
+    
+    // Timeouts
+    defaultCommandTimeout: 10000,
+    requestTimeout: 10000,
+    responseTimeout: 30000,
+    
+    // Reintentos en caso de fallos
+    retries: {
+      runMode: 2,      // En CI
+      openMode: 0      // En desarrollo
+    },
+    
+    // Configuración de screenshots y videos
+    screenshotOnRunFailure: true,
+    video: false,
+    
+    // Archivos de soporte
+    supportFile: 'cypress/support/e2e.ts',
+    specPattern: 'cypress/e2e/**/*.cy.{js,jsx,ts,tsx}',
+    fixturesFolder: 'cypress/fixtures',
+    
+    setupNodeEvents(on, config) {
+      on('task', {
+        log(message) {
+          console.log(message);
+          return null;
+        },
+      });
+      return config;
+    },
+  },
+  
+  // Variables de entorno
+  env: {
+    apiUrl: 'http://localhost:3000/api',
+    testUser: {
+      email: 'test@example.com',
+      password: 'test123'
+    }
+  }
+});
+```
+
+### Custom Commands Reales (cypress/support/commands.ts)
+
+```typescript
+/// <reference types="cypress" />
+
+/**
+ * Custom command para hacer login via UI
+ */
+Cypress.Commands.add('loginByUI', (email: string, password: string) => {
+  cy.visit('/login');
+  cy.get('input[name="email"]').type(email);
+  cy.get('input[name="password"]').type(password);
+  cy.get('input[type="submit"]').click();
+  cy.url().should('include', '/admin');
+});
+
+/**
+ * Custom command para mockear la API del dashboard
+ */
+Cypress.Commands.add('mockDashboardApi', (options?: { 
+  aboutMe?: object; 
+  projects?: object[];
+  delay?: number;
+  error?: boolean;
+}) => {
+  const defaultAboutMe = {
+    _id: '507f1f77bcf86cd799439011',
+    name: 'Test User',
+    birthday: 631152000000,
+    nationality: 'Spanish',
+    job: 'Software Developer',
+    github: 'https://github.com/test'
+  };
+
+  const defaultProjects = [
+    {
+      _id: '507f1f77bcf86cd799439012',
+      title: 'Test Project 1',
+      description: 'Description for test project 1',
+      version: '1.0.0',
+      link: 'https://github.com/test/project1',
+      tag: 'testing',
+      timestamp: Date.now()
+    }
+  ];
+
+  if (options?.error) {
+    cy.intercept('GET', '**/v1/aboutme/', { statusCode: 500 }).as('getAboutMeError');
+    cy.intercept('GET', '**/v1/projects/', { statusCode: 500 }).as('getProjectsError');
+  } else {
+    cy.intercept('GET', '**/v1/aboutme/', {
+      statusCode: 200,
+      body: options?.aboutMe || defaultAboutMe,
+      delay: options?.delay || 0
+    }).as('getAboutMe');
+
+    cy.intercept('GET', '**/v1/projects/', {
+      statusCode: 200,
+      body: options?.projects || defaultProjects,
+      delay: options?.delay || 0
+    }).as('getProjects');
+  }
+});
+
+/**
+ * Custom command para interceptar login
+ */
+Cypress.Commands.add('mockLoginApi', (options?: {
+  success?: boolean;
+  token?: string;
+  delay?: number;
+}) => {
+  if (options?.success === false) {
+    cy.intercept('POST', '**/auth/login', {
+      statusCode: 401,
+      body: { error: 'Invalid credentials' }
+    }).as('loginError');
+  } else {
+    cy.intercept('POST', '**/auth/login', {
+      statusCode: 200,
+      body: { token: options?.token || 'mock-jwt-token-for-testing' },
+      delay: options?.delay || 0
+    }).as('loginSuccess');
+  }
+});
+
+// Type declarations
+declare global {
+  namespace Cypress {
+    interface Chainable {
+      loginByUI(email: string, password: string): Chainable<void>;
+      mockDashboardApi(options?: { 
+        aboutMe?: object; 
+        projects?: object[];
+        delay?: number;
+        error?: boolean;
+      }): Chainable<void>;
+      mockLoginApi(options?: {
+        success?: boolean;
+        token?: string;
+        delay?: number;
+      }): Chainable<void>;
+    }
+  }
+}
+
+export {};
+```
+
+### Scripts en package.json
+
+```json
+{
+  "scripts": {
+    "dev": "vite",
+    "test": "jest",
+    "cy:open": "cypress open",
+    "cy:run": "cypress run",
+    "cy:run:headed": "cypress run --headed",
+    "test:e2e": "cypress run",
+    "test:e2e:dev": "cypress open"
+  }
+}
+```
+
+---
+
 ## Próximos Pasos
 
 Ahora que tienes Cypress instalado y configurado, estás listo para:
