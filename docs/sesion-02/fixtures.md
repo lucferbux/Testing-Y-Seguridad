@@ -135,18 +135,21 @@ export const userWithResetToken: Partial<IUserModel> = {
 #### 2. Fixtures de Proyectos (projects.ts)
 
 ```typescript
-import { Project } from '@/model/project';
+import { IProjectsModel } from '@/components/Projects/model';
 
 // ==================== DATOS BÁSICOS ====================
 
+// Tipo para datos de entrada de proyectos (solo los campos del schema)
+type ProjectInput = Pick<IProjectsModel, 'title' | 'description' | 'version' | 'link' | 'tag' | 'timestamp'>;
+
 // Proyecto válido estándar
-export const validProject: Omit<Project, '_id'> = {
+export const validProject: ProjectInput = {
   title: 'Taller Testing & Security',
   description: 'Proyecto educativo sobre testing y seguridad en aplicaciones web',
   version: '1.0.0',
   link: 'https://github.com/lucferbux/Taller-Testing-Security',
   tag: 'education',
-  timestamp: Date.now(),
+  timestamp: Date.now()
 };
 
 // Casos de proyectos inválidos - para testear validaciones
@@ -156,38 +159,38 @@ export const invalidProjects = {
     version: '1.0.0',
     link: 'https://github.com/test',
     tag: 'test',
-    timestamp: Date.now(),
-  } as Partial<Project>,
-  
+    timestamp: Date.now()
+  } as Partial<ProjectInput>,
+
   noDescription: {
     title: 'No Description Project',
     version: '1.0.0',
     link: 'https://github.com/test',
     tag: 'test',
-    timestamp: Date.now(),
-  } as Partial<Project>,
-  
+    timestamp: Date.now()
+  } as Partial<ProjectInput>,
+
   invalidLink: {
     title: 'Invalid Link',
     description: 'Project with invalid link',
     version: '1.0.0',
     link: 'not-a-url',
     tag: 'test',
-    timestamp: Date.now(),
-  } as Partial<Project>,
+    timestamp: Date.now()
+  } as Partial<ProjectInput>
 };
 
 // ==================== COLECCIONES ====================
 
 // Conjunto de proyectos de muestra
-export const sampleProjects: Omit<Project, '_id'>[] = [
+export const sampleProjects: ProjectInput[] = [
   {
     title: 'React Dashboard',
     description: 'Dashboard administrativo con React y TypeScript',
     version: '2.1.0',
     link: 'https://github.com/lucferbux/react-dashboard',
     tag: 'react',
-    timestamp: Date.now(),
+    timestamp: Date.now()
   },
   {
     title: 'Vue Portfolio',
@@ -195,7 +198,7 @@ export const sampleProjects: Omit<Project, '_id'>[] = [
     version: '1.5.2',
     link: 'https://github.com/lucferbux/vue-portfolio',
     tag: 'vue',
-    timestamp: Date.now() - 86400000, // 1 día atrás
+    timestamp: Date.now() - 86400000 // 1 día atrás
   },
   {
     title: 'Node API',
@@ -203,101 +206,13 @@ export const sampleProjects: Omit<Project, '_id'>[] = [
     version: '3.0.0',
     link: 'https://github.com/lucferbux/node-api',
     tag: 'backend',
-    timestamp: Date.now() - 172800000, // 2 días atrás
-  },
+    timestamp: Date.now() - 172800000 // 2 días atrás
+  }
 ];
 
 // Proyectos por categoría
-export const educationProjects = sampleProjects.filter(p => p.tag === 'education');
-export const reactProjects = sampleProjects.filter(p => p.tag === 'react');
-```
-
-#### 3. Fixtures de AboutMe (aboutme.ts)
-
-```typescript
-import { AboutMe } from '@/model/aboutme';
-
-// ==================== DATOS BÁSICOS ====================
-
-// AboutMe válido estándar
-export const validAboutMe: AboutMe = {
-  _id: '507f1f77bcf86cd799439011',
-  name: 'Lucas Fernandez',
-  birthday: 631152000000, // 1990-01-01 en timestamp
-  nationality: 'Spanish',
-  job: 'Software Developer',
-  github: 'https://github.com/lucferbux',
-};
-
-// Casos de aboutme inválidos
-export const invalidAboutMe = {
-  noName: {
-    _id: '507f1f77bcf86cd799439012',
-    birthday: 631152000000,
-    nationality: 'Spanish',
-  } as Partial<AboutMe>,
-  
-  invalidGithub: {
-    _id: '507f1f77bcf86cd799439013',
-    name: 'Invalid Github',
-    github: 'not-a-url',
-  } as Partial<AboutMe>,
-};
-
-// AboutMe mínimo (solo campos requeridos)
-export const minimalAboutMe: AboutMe = {
-  _id: '507f1f77bcf86cd799439014',
-  name: 'Minimal User',
-};
-
-// AboutMe completo (todos los campos)
-export const completeAboutMe: AboutMe = {
-  _id: '507f1f77bcf86cd799439015',
-  name: 'Complete User',
-  birthday: 694224000000, // 1992-01-01
-  nationality: 'American',
-  job: 'Full Stack Developer',
-  github: 'https://github.com/completeuser',
-};
-
-// ==================== FACTORY FUNCTIONS ====================
-
-// Función para crear proyectos mock con valores personalizables
-export function createMockProject(overrides: Partial<Project> = {}): Project {
-  return {
-    _id: Math.random().toString(36).substring(2, 11),
-    title: 'Mock Project',
-    description: 'This is a mock project for testing',
-    version: '1.0.0',
-    link: 'https://github.com/mock/project',
-    tag: 'test',
-    timestamp: Date.now(),
-    ...overrides, // Permite sobrescribir cualquier campo
-  };
-}
-
-// Helper para crear usuarios completos
-export function createMockUser(overrides: Partial<IUserModel> = {}): IUserModel {
-  return {
-    _id: Math.random().toString(36).substring(2, 11),
-    email: 'mock@example.com',
-    password: 'MockPassword123!',
-    ...overrides,
-  } as IUserModel;
-}
-
-// Helper para crear AboutMe completo
-export function createMockAboutMe(overrides: Partial<AboutMe> = {}): AboutMe {
-  return {
-    _id: Math.random().toString(36).substring(2, 11),
-    name: 'Mock User',
-    birthday: Date.now(),
-    nationality: 'Unknown',
-    job: 'Developer',
-    github: 'https://github.com/mockuser',
-    ...overrides,
-  };
-}
+export const educationProjects = sampleProjects.filter((p) => p.tag === 'education');
+export const reactProjects = sampleProjects.filter((p) => p.tag === 'react');
 ```
 
 ### ¿Por qué esta estructura?
@@ -338,93 +253,139 @@ Ahora veamos cómo usar estos fixtures en tests reales del proyecto:
 ### Ejemplo 1: Tests de API con Fixtures
 
 ```typescript
-import { validUser, invalidUsers, sampleUsers } from './fixtures/users';
-import { validProject, sampleProjects } from './fixtures/projects';
+import { validUser, invalidUsers, sampleUsers } from '../../tests/fixtures/users';
 import request from 'supertest';
-import app from '../server';
+import mongoose from 'mongoose';
 
-describe('API con Fixtures del Proyecto', () => {
+describe('User API Integration Tests with Fixtures', () => {
+  let app: any;
+  let clearDatabase: any;
+  let seedUsers: any;
+  let dbConnection: any;
 
-  // ==================== USERS API ====================
-  
-  it('debe crear usuario con datos válidos', async () => {
-    const response = await request(app)
-      .post('/v1/users')
-      .send(validUser) // ← Fixture reutilizable del proyecto
-      .expect(201);
+  // Setup antes de todos los tests
+  beforeAll(async () => {
+    // Configurar variables de entorno para que la app use la base de datos en memoria
+    process.env.MONGODB_URI = process.env.MONGO_URI!;
+    process.env.MONGODB_DB_MAIN = '';
 
-    expect(response.body).toHaveProperty('_id');
-    expect(response.body.email).toBe(validUser.email);
+    // Resetear módulos para recargar la configuración con las nuevas variables de entorno
+    jest.resetModules();
+
+    // Mock auth middleware to bypass authentication
+    jest.doMock('../../config/middleware/jwtAuth', () => ({
+      isAuthenticated: (req: any, res: any, next: any) => next(),
+    }));
+
+    // Importar app y helpers dinámicamente
+    app = require('../../config/server/server').default;
+    const dbHelper = require('../../tests/db-helper');
+    clearDatabase = dbHelper.clearDatabase;
+    seedUsers = dbHelper.seedUsers;
+    
+    // Obtener la conexión de la base de datos para cerrarla después
+    dbConnection = require('../../config/connection/connection').db;
   });
 
-  it('debe rechazar usuario sin email', async () => {
-    const response = await request(app)
-      .post('/v1/users')
-      .send(invalidUsers.noEmail) // ← Fixture de error
-      .expect(400);
-
-    expect(response.body.error).toContain('email');
+  // Limpiar base de datos antes de cada test
+  beforeEach(async () => {
+    await clearDatabase();
   });
 
-  it('debe rechazar email inválido', async () => {
-    const response = await request(app)
-      .post('/v1/users')
-      .send(invalidUsers.invalidEmail)
-      .expect(400);
-
-    expect(response.body.error).toMatch(/email.*invalid/i);
-  });
-
-  // ==================== PROJECTS API ====================
-
-  it('debe crear proyecto con datos válidos', async () => {
-    // Primero autenticamos para obtener token
-    const authResponse = await request(app)
-      .post('/auth/login')
-      .send({ email: validUser.email, password: validUser.password })
-      .expect(200);
-
-    const token = authResponse.body.token;
-
-    // Creamos proyecto usando fixture
-    const response = await request(app)
-      .post('/v1/projects')
-      .set('Authorization', `Bearer ${token}`)
-      .send(validProject)
-      .expect(201);
-
-    expect(response.body.title).toBe(validProject.title);
-    expect(response.body.description).toBe(validProject.description);
-    expect(response.body).toHaveProperty('_id');
-  });
-
-  it('debe listar todos los proyectos', async () => {
-    // Insertamos proyectos de muestra
-    for (const project of sampleProjects) {
-      await request(app)
-        .post('/v1/projects')
-        .send(project);
+  // Cerrar conexión después de todos los tests
+  afterAll(async () => {
+    if (dbConnection) {
+      await dbConnection.close();
     }
-
-    const response = await request(app)
-      .get('/v1/projects/')
-      .expect(200);
-
-    expect(response.body).toHaveLength(sampleProjects.length);
-    expect(response.body[0]).toHaveProperty('title');
+    await mongoose.connection.close();
   });
 
-  // ==================== CUSTOMIZATION ====================
+  // ==================== POST /v1/users con Fixtures ====================
   
-  it('debe personalizar fixture con overrides', () => {
-    const customProject = createMockProject({ 
-      title: 'Custom Title',
-      tag: 'custom-tag',
+  describe('POST /v1/users', () => {
+    it('debe crear usuario con fixture válido', async () => {
+      const response = await request(app)
+        .post('/v1/users')
+        .set('Accept', 'application/json')
+        .send(validUser)
+        .expect(201);
+
+      expect(response.body).toHaveProperty('_id');
+      expect(response.body.email).toBe(validUser.email);
+      // Password debe estar hasheado
+      expect(response.body.password).toMatch(/^\$2[aby]\$/);
     });
 
-    expect(customProject.title).toBe('Custom Title');
-    expect(customProject.tag).toBe('custom-tag');
-    expect(customProject).toHaveProperty('_id'); // Auto-generado
+    it('debe rechazar usuario sin email (fixture noEmail)', async () => {
+      const response = await request(app)
+        .post('/v1/users')
+        .set('Accept', 'application/json')
+        .send(invalidUsers.noEmail)
+        .expect(400);
+
+      expect(response.body.message).toContain('email');
+    });
+
+    it('debe rechazar usuario sin password (fixture noPassword)', async () => {
+      const response = await request(app)
+        .post('/v1/users')
+        .set('Accept', 'application/json')
+        .send(invalidUsers.noPassword)
+        .expect(400);
+
+      expect(response.body.message).toContain('password');
+    });
+
+    it('debe rechazar email inválido (fixture invalidEmail)', async () => {
+      const response = await request(app)
+        .post('/v1/users')
+        .set('Accept', 'application/json')
+        .send(invalidUsers.invalidEmail)
+        .expect(400);
+
+      expect(response.body.message).toContain('valid email');
+    });
+  });
+
+  // ==================== GET /v1/users con Fixtures ====================
+
+  describe('GET /v1/users', () => {
+    it('debe retornar todos los usuarios usando sampleUsers fixture', async () => {
+      // Seed con fixture de usuarios de muestra
+      await seedUsers(sampleUsers);
+
+      const response = await request(app)
+        .get('/v1/users')
+        .set('Accept', 'application/json')
+        .expect(200);
+
+      expect(response.body).toHaveLength(sampleUsers.length);
+      expect(response.body[0]).toHaveProperty('_id');
+      expect(response.body[0]).toHaveProperty('email');
+      // Password no debe retornarse
+      expect(response.body[0]).not.toHaveProperty('password');
+    });
+  });
+
+  // ==================== DELETE /v1/users con Fixtures ====================
+
+  describe('DELETE /v1/users/:id', () => {
+    it('debe eliminar usuario creado con fixture', async () => {
+      // Crear usuario con fixture
+      const [user] = await seedUsers([validUser]);
+
+      // Eliminar usuario
+      await request(app)
+        .delete(`/v1/users/${user._id}`)
+        .set('Accept', 'application/json')
+        .expect(200);
+
+      // Verificar que ya no existe
+      await request(app)
+        .get(`/v1/users/${user._id}`)
+        .set('Accept', 'application/json')
+        .expect(404);
+    });
   });
 });
 ```
