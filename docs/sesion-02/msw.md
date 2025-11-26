@@ -54,8 +54,8 @@ Cuando testeamos componentes que hacen requests HTTP, tenemos varias opciones pa
 MSW es una dependencia de desarrollo que solo usamos en tests y durante el desarrollo:
 
 ```bash
-# Instalar MSW
-npm install --save-dev msw
+# Instalar MSW y dependencias necesarias para Jest
+npm install --save-dev msw whatwg-fetch
 
 # Para TypeScript (tipos incluidos en el paquete principal)
 # No necesitas @types/msw
@@ -63,6 +63,10 @@ npm install --save-dev msw
 
 :::info Versión recomendada
 Este tutorial usa MSW v2.x. Si usas v1.x, la API es ligeramente diferente (usa `rest` en lugar de `http`). Revisa la [documentación oficial](https://mswjs.io/) para detalles de migración.
+:::
+
+:::caution MSW v2 y Jest con CommonJS
+MSW v2 usa ESM nativo, lo que puede causar problemas con Jest configurado en modo CommonJS. Para evitar estos problemas, puedes usar archivos `.cjs` para los handlers y server, o configurar Jest en modo ESM experimental.
 :::
 
 ## Configuración Completa
@@ -192,10 +196,12 @@ const mockProjects: Project[] = [
 export const handlers = [
   
   // POST /auth/login - Autenticación
+  // NOTA: El cliente HttpApiClient usa URLSearchParams, no FormData
   http.post('/auth/login', async ({ request }) => {
-    const body = await request.formData();
-    const email = body.get('email');
-    const password = body.get('password');
+    const body = await request.text();
+    const params = new URLSearchParams(body);
+    const email = params.get('email');
+    const password = params.get('password');
     
     // Simulamos validación de credenciales
     if (email === 'user@test.com' && password === 'password123') {
@@ -289,7 +295,7 @@ export const handlers = [
 1. **Validación de auth**: Los endpoints protegidos verifican el header `Authorization`
 2. **Datos realistas**: Usamos los modelos exactos del proyecto (AboutMe, Project)
 3. **Códigos de estado apropiados**: 401 para no autenticado, 400 para bad request
-4. **FormData para login**: El endpoint `/auth/login` espera FormData, no JSON
+4. **URLSearchParams para login**: El endpoint `/auth/login` espera `application/x-www-form-urlencoded`, que es lo que `HttpApiClient` envía
 5. **IDs automáticos**: Generamos `_id` para proyectos nuevos
 
 ### Patrones de Handlers
@@ -312,13 +318,17 @@ if (!authHeader || !authHeader.startsWith('Bearer ')) {
 }
 ```
 
-#### 3. FormData para login
+#### 3. URLSearchParams para login
+
+El cliente `HttpApiClient` envía credenciales como `application/x-www-form-urlencoded`:
 
 ```typescript
 http.post('/auth/login', async ({ request }) => {
-  const body = await request.formData();
-  const email = body.get('email');
-  const password = body.get('password');
+  // Leer el body como texto y parsearlo
+  const body = await request.text();
+  const params = new URLSearchParams(body);
+  const email = params.get('email');
+  const password = params.get('password');
   // ...
 });
 ```
@@ -370,32 +380,69 @@ export const handlers = [
 ```
 :::
 
-### Paso 3: Integrar con Jest - src/setupTests.ts
+### Paso 3: Integrar con Jest - jest.setup.cjs
 
-Este archivo se ejecuta **antes de todos los tests** y configura MSW globalmente:
+Este archivo se ejecuta **antes de todos los tests** y configura MSW globalmente. Para evitar problemas con ESM en Jest, usamos un archivo `.cjs`:
 
-```typescript
-import '@testing-library/jest-dom';
-import { server } from './mocks/server';
+```javascript
+// jest.setup.cjs
+require('@testing-library/jest-dom');
+require('whatwg-fetch');
 
-// Establecer servidor antes de ejecutar todos los tests
-beforeAll(() => {
-  server.listen({
-    // Si un request no tiene handler, muestra warning en lugar de error
-    onUnhandledRequest: 'warn',
-  });
-});
+// ==================== POLYFILLS PARA MSW v2 ====================
+// MSW v2 requiere fetch API nativa y otras APIs de Web Streams
+const { TextEncoder, TextDecoder } = require('util');
+global.TextEncoder = TextEncoder;
+global.TextDecoder = TextDecoder;
 
-// Resetear handlers después de cada test
-// Esto previene que overrides en un test afecten a otros
-afterEach(() => {
-  server.resetHandlers();
-});
+// ReadableStream y otras APIs de streams (Node.js 18+)
+const { ReadableStream, WritableStream, TransformStream } = require('stream/web');
+global.ReadableStream = ReadableStream;
+global.WritableStream = WritableStream;
+global.TransformStream = TransformStream;
 
-// Cerrar servidor después de todos los tests
-afterAll(() => {
-  server.close();
-});
+// BroadcastChannel polyfill para MSW
+class BroadcastChannelPolyfill {
+  constructor(name) { this.name = name; }
+  postMessage() {}
+  close() {}
+  addEventListener() {}
+  removeEventListener() {}
+}
+global.BroadcastChannel = global.BroadcastChannel || BroadcastChannelPolyfill;
+
+// ==================== CONFIGURACIÓN GLOBAL ====================
+// Configuración adicional para tests...
+```
+
+:::warning Configuración con MSW v2 y Jest
+MSW v2 usa ESM nativo, lo que puede causar problemas con Jest en modo CommonJS. Si experimentas errores de `Unexpected token 'export'`, tienes dos opciones:
+
+1. **Usar archivos `.cjs`** para handlers y server (recomendado para simplicidad)
+2. **Ejecutar Jest con ESM experimental**: `NODE_OPTIONS='--experimental-vm-modules' npx jest`
+
+Para el proyecto Taller-Testing-Security, los archivos de MSW están en:
+- `ui/src/mocks/handlers.cjs` - Handlers de API
+- `ui/src/mocks/server.cjs` - Server de MSW
+:::
+
+### Configuración de Jest - jest.config.cjs
+
+Asegúrate de que tu configuración de Jest incluya los `transformIgnorePatterns` correctos:
+
+```javascript
+// jest.config.cjs
+module.exports = {
+  testEnvironment: 'jsdom',
+  setupFilesAfterEnv: ['<rootDir>/jest.setup.cjs'],
+  
+  // Transformar módulos ESM de node_modules que MSW necesita
+  transformIgnorePatterns: [
+    '/node_modules/(?!(msw|@mswjs|until-async|@bundled-es-modules|outvariant|strict-event-emitter|cookie|@open-draft)/)',
+  ],
+  
+  // ... resto de la configuración
+};
 ```
 
 ### Opciones de configuración
@@ -810,6 +857,226 @@ it('test con MSW', async () => {
 - Funciona en tests **Y** browser (development)
 - Override fácil cuando es necesario
 - Simula autenticación JWT de forma realista
+
+## Enfoque Alternativo: Jest Mock con API Client Factory
+
+:::info Implementación Real del Proyecto
+En el proyecto **Taller-Testing-Security**, debido a las limitaciones de compatibilidad entre MSW v2 (ESM) y Jest con CommonJS, vamos a optar por un enfoque híbrido: mantener los archivos de MSW configurados para uso futuro (browser mode o tests con ESM), mientras que los tests actuales usan **jest.mock()** del API Client Factory.
+
+Este enfoque es **igualmente válido** y ofrece ventajas en ciertos escenarios.
+:::
+
+### ¿Por qué usar Jest Mock en lugar de MSW?
+
+| Situación | Mejor Opción |
+|-----------|--------------|
+| Jest con CommonJS + MSW v2 da problemas de ESM | jest.mock() |
+| Tests unitarios de componentes | jest.mock() |
+| Tests de integración con HTTP real | MSW |
+| Desarrollo sin backend | MSW (browser mode) |
+| CI/CD con limitaciones de dependencias | jest.mock() |
+
+### Implementación Real: Test de ProjectList
+
+```typescript
+// ui/src/components/cards/__tests__/ProjectList.test.tsx
+import React from 'react';
+import { render, screen, waitFor } from '@testing-library/react';
+
+// ==================== MOCK DEL API CLIENT ====================
+// Los mocks deben definirse ANTES del import del componente
+const mockGetProjects = jest.fn();
+const mockGetAboutMe = jest.fn();
+
+jest.mock('../../../api/api-client-factory', () => {
+  return {
+    __esModule: true,
+    default: () => ({
+      getProjects: mockGetProjects,
+      getAboutMe: mockGetAboutMe,
+    }),
+  };
+});
+
+// Import del componente DESPUÉS del mock
+import { ProjectList } from '../ProjectList';
+
+// ==================== DATOS MOCK ====================
+const mockProjects = [
+  {
+    _id: '507f1f77bcf86cd799439012',
+    title: 'Taller Testing & Security',
+    description: 'Proyecto educativo sobre testing y seguridad en aplicaciones web',
+    version: '1.0.0',
+    link: 'https://github.com/lucferbux/Taller-Testing-Security',
+    tag: 'education',
+    timestamp: Date.now()
+  },
+  {
+    _id: '507f1f77bcf86cd799439013',
+    title: 'React Dashboard',
+    description: 'Dashboard administrativo con React y TypeScript',
+    version: '2.1.0',
+    link: 'https://github.com/lucferbux/react-dashboard',
+    tag: 'react',
+    timestamp: Date.now() - 86400000
+  }
+];
+
+describe('ProjectList Component', () => {
+  
+  beforeEach(() => {
+    // Limpiar mocks antes de cada test
+    jest.clearAllMocks();
+  });
+
+  // ==================== HAPPY PATH ====================
+  
+  it('debe mostrar loading inicialmente', () => {
+    // Setup: el mock no resuelve inmediatamente
+    mockGetProjects.mockImplementation(() => new Promise(() => {}));
+    
+    render(<ProjectList />);
+    
+    expect(screen.getByText('Cargando proyectos...')).toBeInTheDocument();
+  });
+
+  it('debe cargar y mostrar proyectos desde la API', async () => {
+    // Setup: el mock resuelve con proyectos
+    mockGetProjects.mockResolvedValueOnce(mockProjects);
+    
+    render(<ProjectList />);
+
+    await waitFor(() => {
+      expect(screen.queryByText('Cargando proyectos...')).not.toBeInTheDocument();
+    });
+
+    expect(screen.getByText('Taller Testing & Security')).toBeInTheDocument();
+    expect(screen.getByText('React Dashboard')).toBeInTheDocument();
+  });
+
+  // ==================== ERROR HANDLING ====================
+
+  it('debe manejar errores de servidor (500)', async () => {
+    mockGetProjects.mockRejectedValueOnce(new Error('Internal server error'));
+
+    render(<ProjectList />);
+
+    await waitFor(() => {
+      expect(screen.getByText(/Error:/)).toBeInTheDocument();
+    });
+
+    expect(screen.queryByText('Taller Testing & Security')).not.toBeInTheDocument();
+  });
+
+  it('debe manejar errores de red', async () => {
+    mockGetProjects.mockRejectedValueOnce(new Error('Network error'));
+
+    render(<ProjectList />);
+
+    await waitFor(() => {
+      expect(screen.getByText(/Error:/)).toBeInTheDocument();
+    });
+  });
+
+  it('debe manejar respuesta vacía', async () => {
+    mockGetProjects.mockResolvedValueOnce([]);
+
+    render(<ProjectList />);
+
+    await waitFor(() => {
+      expect(screen.getByText('No hay proyectos disponibles')).toBeInTheDocument();
+    });
+  });
+
+  // ==================== DELAYS Y VERIFICACIONES ====================
+
+  it('debe manejar respuestas lentas', async () => {
+    mockGetProjects.mockImplementation(() => 
+      new Promise(resolve => {
+        setTimeout(() => {
+          resolve([{
+            _id: 'slow-id',
+            title: 'Slow Loading Project',
+            description: 'Este proyecto tardó en cargar',
+            version: '1.0.0',
+            link: '',
+            tag: 'slow',
+            timestamp: Date.now()
+          }]);
+        }, 100);
+      })
+    );
+
+    render(<ProjectList />);
+
+    expect(screen.getByText('Cargando proyectos...')).toBeInTheDocument();
+
+    await waitFor(() => {
+      expect(screen.getByText('Slow Loading Project')).toBeInTheDocument();
+    });
+  });
+
+  it('debe llamar a getProjects al montar', async () => {
+    mockGetProjects.mockResolvedValueOnce(mockProjects);
+    mockGetProjects.mockResolvedValueOnce(mockProjects); // React 18 StrictMode
+    
+    render(<ProjectList />);
+
+    await waitFor(() => {
+      expect(screen.queryByText('Cargando proyectos...')).not.toBeInTheDocument();
+    });
+
+    expect(mockGetProjects).toHaveBeenCalled();
+  });
+});
+```
+
+### Puntos Clave del Enfoque con jest.mock()
+
+1. **Orden de imports**: El `jest.mock()` se ejecuta primero (hoisting de Jest), por lo que los mocks deben definirse **antes** del import del componente.
+
+2. **React 18 StrictMode**: En modo estricto, los efectos se ejecutan dos veces. Considera esto al verificar llamadas con `toHaveBeenCalledTimes()`.
+
+3. **Limpieza entre tests**: Usa `jest.clearAllMocks()` en `beforeEach()` para asegurar que cada test inicia limpio.
+
+4. **mockResolvedValueOnce vs mockResolvedValue**: Usa `Once` para respuestas específicas por test, sin afectar otros tests.
+
+### Cuándo Elegir Cada Enfoque
+
+```text
+┌─────────────────────────────────────────────────────────────────┐
+│                    Decisión de Enfoque                          │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                 │
+│  ¿Tu proyecto usa Jest con CommonJS?                           │
+│         │                                                       │
+│         ├─ Sí ──► ¿MSW v2 da errores de ESM?                   │
+│         │              │                                        │
+│         │              ├─ Sí ──► Usa jest.mock() ✅            │
+│         │              │                                        │
+│         │              └─ No ──► Usa MSW ✅                     │
+│         │                                                       │
+│         └─ No (ESM nativo) ──► Usa MSW ✅                       │
+│                                                                 │
+│  ¿Necesitas mockear APIs en el browser también?                │
+│         │                                                       │
+│         ├─ Sí ──► Usa MSW (configurado para browser) ✅        │
+│         │                                                       │
+│         └─ No ──► jest.mock() es suficiente ✅                 │
+│                                                                 │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+:::tip Ambos enfoques son válidos
+La elección entre MSW y jest.mock() depende de tu contexto específico. Lo importante es que tus tests:
+
+- Sean **mantenibles** y fáciles de entender
+- Cubran los **casos de uso reales** (loading, success, error)
+- Sean **rápidos** y confiables en CI/CD
+- Simulen **comportamiento realista** de la API
+
+:::
 
 ## MSW en el Browser (Bonus)
 
