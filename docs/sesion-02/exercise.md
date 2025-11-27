@@ -38,6 +38,13 @@ npm install
 
 Verifica que ambos proyectos tienen las dependencias de testing instaladas.
 
+Una vez comprobemos que funciona, hay que realizar lo siguiente:
+
+1. Habilitar `Jest`, `react-testing-library` y sus configuraciones siguiendo el contenido de la sesión 1.
+2. Habilitar `supertest` y `Jest` en el backend (`api`) e implementar los test vistos en clase.
+
+Al ya tener esto podemos proceder con la actividad.
+
 ### Parte 2: Tests de Context API (ProjectContext)
 
 Implementa tests para el `ProjectContext` que gestiona el estado de los proyectos.
@@ -108,38 +115,32 @@ Los tests deben cubrir:
 
 ### Parte 4: Tests de API con MongoDB Memory Server
 
-Implementa tests para el `UserRouter` usando MongoDB Memory Server.
+Implementa tests para el `ProjectsRouter` usando MongoDB Memory Server.
 
-**Archivo a testear**: `api/src/routes/UserRouter.ts`
+**Archivo a testear**: `api/src/routes/ProjectsRouter.ts`
 
-**Archivo de tests**: `api/src/routes/__tests__/UserRouter.test.ts`
+**Archivo de tests**: `api/src/routes/__tests__/ProjectsRouter.test.ts`
 
 Los tests deben cubrir:
 
-1. **GET /v1/users/:id - Usuario existente**:
-   - Insertar un usuario en la DB
+1. **GET /v1/projects/:id - Proyecto existente**:
+   - Insertar un proyecto en la DB
    - Hacer GET request
    - Verificar status 200 y datos correctos
 
-2. **GET /v1/users/:id - Usuario inexistente**:
+2. **GET /v1/projects/:id - Proyecto inexistente**:
    - Hacer GET con ID que no existe
    - Verificar status 404
    - Verificar mensaje de error
 
-3. **POST /v1/users - Crear usuario válido**:
-   - Enviar datos de usuario válidos
+3. **POST /v1/projects - Crear proyecto válido**:
+   - Enviar datos de proyecto válidos
    - Verificar status 201
-   - Verificar que el usuario se creó en la DB
+   - Verificar que el proyecto se creó en la DB
    - Verificar que el password está hasheado
 
-4. **POST /v1/users - Email duplicado**:
-   - Crear un usuario
-   - Intentar crear otro con el mismo email
-   - Verificar status 400
-   - Verificar mensaje de error
-
-5. **POST /v1/users - Datos inválidos**:
-   - Enviar request sin email
+4. **POST /v1/users - Datos inválidos**:
+   - Enviar request sin un dato necesario
    - Verificar status 400
    - Verificar mensaje de validación
 
@@ -165,43 +166,7 @@ Implementa:
 
 **Uso en tests**: Actualiza al menos 2 tests existentes para usar estos fixtures.
 
-### Parte 6: Mock Service Worker (MSW)
-
-Configura MSW y crea tests de componentes que usen la API.
-
-**Archivo 1**: `ui/src/mocks/handlers.ts`
-
-Implementa handlers para:
-- `GET /v1/projects/` - Retorna array de proyectos
-- `POST /v1/projects` - Crea proyecto (requiere auth)
-- `GET /v1/aboutme/` - Retorna perfil AboutMe
-
-**Archivo 2**: `ui/src/mocks/server.ts`
-
-Configura el server de MSW para tests.
-
-**Archivo 3**: `ui/src/setupTests.ts`
-
-Configura los lifecycle hooks de MSW (beforeAll, afterEach, afterAll).
-
-**Archivo 4**: `ui/src/components/__tests__/ProjectList.test.tsx` (o componente similar)
-
-Implementa tests:
-1. **Carga de proyectos exitosa**:
-   - Renderizar componente
-   - Verificar loading state
-   - Esperar a que aparezcan los proyectos
-   - Verificar que se muestran correctamente
-
-2. **Error de servidor**:
-   - Usar `server.use()` para simular error 500
-   - Verificar que se muestra mensaje de error
-
-3. **Lista vacía**:
-   - Usar `server.use()` para retornar array vacío
-   - Verificar mensaje de "no hay proyectos"
-
-### Parte 7: Test Coverage y Análisis
+### Parte 6: Test Coverage y Análisis
 
 Ejecuta el coverage y analiza los resultados:
 
