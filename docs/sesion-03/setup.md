@@ -182,8 +182,8 @@ import { defineConfig } from 'cypress';
 
 export default defineConfig({
   e2e: {
-    // URL base de tu aplicación
-    baseUrl: 'http://localhost:3000',
+    // URL base de tu aplicación (puerto 5173 para Vite)
+    baseUrl: 'http://localhost:5173',
     
     // Viewport por defecto (resolución de pantalla)
     viewportWidth: 1280,
@@ -195,7 +195,7 @@ export default defineConfig({
     pageLoadTimeout: 30000,         // 30 segundos para carga de página
     
     // Videos y screenshots
-    video: true,                    // Grabar videos de tests
+    video: false,                   // Desactivado por defecto (ahorra espacio)
     screenshotOnRunFailure: true,   // Screenshot cuando test falla
     
     // Patron de archivos de test
@@ -217,11 +217,11 @@ import { defineConfig } from 'cypress';
 
 export default defineConfig({
   e2e: {
-    baseUrl: 'http://localhost:3000',
+    baseUrl: 'http://localhost:5173',
     
     // Environment variables
     env: {
-      apiUrl: 'http://localhost:4000/api',
+      apiUrl: 'http://localhost:3000/api',
       adminEmail: 'admin@test.com',
       adminPassword: 'admin123',
     },
@@ -346,7 +346,8 @@ Agrega scripts para facilitar la ejecución de Cypress:
     "cy:run:firefox": "cypress run --browser firefox",
     "cy:run:headed": "cypress run --headed",
     "cy:run:spec": "cypress run --spec",
-    "test:e2e": "start-server-and-test dev http://localhost:3000 cy:run"
+    "test:e2e": "start-server-and-test dev http://localhost:5173 cy:run",
+    "test:e2e:open": "start-server-and-test dev http://localhost:5173 cy:open"
   }
 }
 ```
@@ -404,17 +405,21 @@ npm install --save-dev start-server-and-test
 ```json
 {
   "scripts": {
-    "dev": "next dev",           // O tu comando de dev
+    "dev": "vite",               // O tu comando de dev (next dev, etc.)
     "cy:run": "cypress run",
-    "test:e2e": "start-server-and-test dev http://localhost:3000 cy:run"
+    "test:e2e": "start-server-and-test dev http://localhost:5173 cy:run"
   }
 }
 ```
 
+:::info Puerto por defecto
+Vite usa el puerto **5173** por defecto. Si usas Next.js sería **3000**, y para CRA sería **3000** también.
+:::
+
 **¿Qué hace `start-server-and-test`?**
 
 1. **Ejecuta `npm run dev`** (levanta tu aplicación)
-2. **Espera** hasta que `http://localhost:3000` responda (polling cada 300ms)
+2. **Espera** hasta que la URL responda (polling cada 300ms)
 3. **Ejecuta `npm run cy:run`** (corre tests)
 4. **Detiene el servidor** al terminar
 
@@ -429,15 +434,15 @@ start-server-and-test <start-command> <url> <test-command>
 ```bash
 # Esperar múltiples servicios
 start-server-and-test \
-  "npm run dev" http://localhost:3000 \
-  "npm run api" http://localhost:4000 \
+  "npm run dev" http://localhost:5173 \
+  "npm run api" http://localhost:3000 \
   "npm run cy:run"
 
 # Con puerto específico
 start-server-and-test dev:8080 http://localhost:8080 cy:run
 
-# Esperar path específico
-start-server-and-test dev http://localhost:3000/health cy:run
+# Esperar path específico (health check)
+start-server-and-test dev http://localhost:5173 cy:run
 ```
 
 ---
@@ -457,13 +462,15 @@ import { defineConfig } from 'cypress';
 
 export default defineConfig({
   e2e: {
-    baseUrl: 'http://localhost:3000',
+    // URL base de la aplicación (puerto 5173 para Vite)
+    baseUrl: 'http://localhost:5173',
     viewportWidth: 1280,
     viewportHeight: 720,
-    video: true,
+    video: false,
     screenshotOnRunFailure: true,
     env: {
-      apiUrl: 'http://localhost:4000/api',
+      // API URL para interceptar requests
+      apiUrl: 'http://localhost:3000/api',
     },
     setupNodeEvents(on, config) {
       // Custom tasks
@@ -484,13 +491,14 @@ export default defineConfig({
 ```json
 {
   "scripts": {
-    "dev": "next dev",
+    "dev": "vite",
     "cy:open": "cypress open",
     "cy:run": "cypress run",
-    "test:e2e": "start-server-and-test dev http://localhost:3000 cy:run"
+    "test:e2e": "start-server-and-test dev http://localhost:5173 cy:run",
+    "test:e2e:open": "start-server-and-test dev http://localhost:5173 cy:open"
   },
   "devDependencies": {
-    "cypress": "^13.0.0",
+    "cypress": "^15.0.0",
     "start-server-and-test": "^2.0.0"
   }
 }
@@ -577,7 +585,7 @@ jobs:
         uses: cypress-io/github-action@v5
         with:
           start: npm run dev
-          wait-on: 'http://localhost:3000'
+          wait-on: 'http://localhost:5173'  # Puerto de Vite
           browser: chrome
       
       - name: Upload screenshots
@@ -631,8 +639,8 @@ import { defineConfig } from 'cypress';
 
 export default defineConfig({
   e2e: {
-    // URL base de la aplicación (Vite dev server)
-    baseUrl: 'http://127.0.0.1:5173',
+    // URL base de la aplicación - usar localhost:5173 (puerto por defecto de Vite)
+    baseUrl: 'http://localhost:5173',
     
     // Configuración de viewports
     viewportWidth: 1280,
@@ -671,7 +679,10 @@ export default defineConfig({
   
   // Variables de entorno
   env: {
+    // API URL para interceptar requests
     apiUrl: 'http://localhost:3000/api',
+    
+    // Credenciales de prueba
     testUser: {
       email: 'test@example.com',
       password: 'test123'

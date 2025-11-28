@@ -177,12 +177,20 @@ Cypress.Commands.add('mockDashboardApi', (options?: {
 
 /**
  * Custom command para interceptar login
+ * 
+ * IMPORTANTE: El token debe ser un JWT válido porque la app usa jwt_decode
+ * para extraer las fechas de expiración. Usamos un JWT pre-generado que expira
+ * en 2030 para evitar problemas en los tests.
  */
 Cypress.Commands.add('mockLoginApi', (options?: {
   success?: boolean;
   token?: string;
   delay?: number;
 }) => {
+  // JWT válido que expira en 2030
+  // Payload: { "_id": "507f1f77bcf86cd799439011", "email": "test@example.com", "iat": 1700000000, "exp": 1900000000 }
+  const validJwtToken = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJfaWQiOiI1MDdmMWY3N2JjZjg2Y2Q3OTk0MzkwMTEiLCJlbWFpbCI6InRlc3RAZXhhbXBsZS5jb20iLCJpYXQiOjE3MDAwMDAwMDAsImV4cCI6MTkwMDAwMDAwMH0.Qs8nKjZ7GJXK7YjA_rOqwM7hK5dYWLNg8c3d_mLc8Z0';
+  
   if (options?.success === false) {
     cy.intercept('POST', '**/auth/login', {
       statusCode: 401,
@@ -191,7 +199,7 @@ Cypress.Commands.add('mockLoginApi', (options?: {
   } else {
     cy.intercept('POST', '**/auth/login', {
       statusCode: 200,
-      body: { token: options?.token || 'mock-jwt-token-for-testing' },
+      body: { token: options?.token || validJwtToken },
       delay: options?.delay || 0
     }).as('loginSuccess');
   }
