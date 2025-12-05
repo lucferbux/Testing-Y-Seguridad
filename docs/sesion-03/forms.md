@@ -1,302 +1,432 @@
 ---
 sidebar_position: 7
-title: "Testing de Formularios"
+title: "Formularios"
 ---
 
-Los formularios son uno de los elementos más críticos de una aplicación web. Cypress ofrece APIs intuitivas para interactuar con inputs, validaciones y envíos de formulario.
+Los formularios son una de las partes más críticas de cualquier aplicación. Vamos a ver cómo testearlos en el proyecto **Taller-Testing-Security**.
 
-## Ejemplo Real: Formulario de Login (Taller-Testing-Security)
+## Formularios del Proyecto
 
-El proyecto tiene un formulario de login en `/login` que usa inputs de email y password.
+El proyecto tiene estos formularios principales:
 
-### Estructura del Formulario
+| Formulario | Ruta | Campos |
+|------------|------|--------|
+| Login | `/login` | email, password |
+| Admin AboutMe | `/admin` | name, bio, location |
+| Admin Projects | `/admin` | title, description, technologies |
 
-```tsx
-// ui/src/components/routes/Login.tsx (simplificado)
-<form onSubmit={doLogin}>
-  <input
-    name="email"
-    type="email"
-    placeholder="Email"
-    value={username}
-    onChange={onChangeUsername}
-  />
-  <input
-    name="password"
-    type="password"
-    placeholder="Password"
-    value={password}
-    onChange={onChangePassword}
-  />
-  <input type="submit" value="Log In" />
-  {errorMsg && <ErrorDescription>{errorMsg}</ErrorDescription>}
-</form>
-```
+---
 
-### Test Completo del Formulario de Login
+## Comandos para Formularios
+
+| Comando | Descripción |
+|---------|-------------|
+| `.type('texto')` | Escribe texto en un input |
+| `.clear()` | Borra el contenido |
+| `.check()` / `.uncheck()` | Checkbox/Radio |
+| `.select('valor')` | Select dropdown |
+| `.submit()` | Submit del form |
+
+---
+
+## Test del Formulario de Login
+
+### Setup básico
 
 ```typescript
 // cypress/e2e/auth/login.cy.ts
 
-describe('Login Page', () => {
+describe('Formulario de Login', () => {
   
   beforeEach(() => {
     cy.visit('/login');
   });
 
-  describe('UI Elements', () => {
+  describe('Campos del formulario', () => {
     
-    it('debe mostrar el formulario de login correctamente', () => {
-      // Verificar que los elementos del formulario existen
+    it('debe mostrar los campos requeridos', () => {
       cy.get('input[name="email"]').should('be.visible');
       cy.get('input[name="password"]').should('be.visible');
       cy.get('input[type="submit"]').should('be.visible');
     });
+
+    it('debe tener los campos vacíos inicialmente', () => {
+      cy.get('input[name="email"]').should('have.value', '');
+      cy.get('input[name="password"]').should('have.value', '');
+    });
   });
 
-  describe('Validación de Formulario', () => {
+  describe('Entrada de datos', () => {
     
-    it('debe mostrar error cuando los campos están vacíos', () => {
-      // Click en submit sin llenar campos
-      cy.get('input[type="submit"]').click();
-      
-      // Verificar mensaje de error
-      cy.contains(/username|password|email|usuario|contraseña/i).should('be.visible');
+    it('debe escribir en el campo email', () => {
+      cy.get('input[name="email"]')
+        .type('test@example.com')
+        .should('have.value', 'test@example.com');
     });
 
-    it('debe mostrar error con solo email', () => {
+    it('debe escribir en el campo password', () => {
+      cy.get('input[name="password"]')
+        .type('password123')
+        .should('have.value', 'password123');
+    });
+
+    it('debe limpiar y reescribir', () => {
+      cy.get('input[name="email"]')
+        .type('primero@test.com')
+        .clear()
+        .type('segundo@test.com')
+        .should('have.value', 'segundo@test.com');
+    });
+  });
+
+  describe('Validación', () => {
+    
+    it('debe requerir email', () => {
+      cy.get('input[name="password"]').type('password123');
+      cy.get('input[type="submit"]').click();
+      
+      // Verificar que no navega
+      cy.url().should('include', '/login');
+    });
+
+    it('debe requerir password', () => {
       cy.get('input[name="email"]').type('test@example.com');
       cy.get('input[type="submit"]').click();
       
-      // Debe mostrar error porque falta password
-      cy.contains(/username|password|email|usuario|contraseña/i).should('be.visible');
+      cy.url().should('include', '/login');
+    });
+
+    it('debe validar formato de email', () => {
+      cy.get('input[name="email"]').type('invalidemail');
+      cy.get('input[name="password"]').type('password123');
+      cy.get('input[type="submit"]').click();
+      
+      // El email inválido no debe pasar validación HTML5
+      cy.get('input[name="email"]:invalid').should('exist');
     });
   });
 
-  describe('Login con API Mockeada', () => {
+  describe('Submit con API', () => {
     
-    /**
-     * IMPORTANTE: La app usa jwt_decode para extraer información del token,
-     * por lo que necesitamos usar un JWT válido en los mocks.
-     * 
-     * Este JWT tiene un payload con:
-     * { "_id": "507f1f77bcf86cd799439011", "email": "test@example.com", "iat": 1700000000, "exp": 1900000000 }
-     */
-    const validJwtToken = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJfaWQiOiI1MDdmMWY3N2JjZjg2Y2Q3OTk0MzkwMTEiLCJlbWFpbCI6InRlc3RAZXhhbXBsZS5jb20iLCJpYXQiOjE3MDAwMDAwMDAsImV4cCI6MTkwMDAwMDAwMH0.Qs8nKjZ7GJXK7YjA_rOqwM7hK5dYWLNg8c3d_mLc8Z0';
-
-    it('debe hacer login exitoso y redirigir a /admin', () => {
-      // Mockear la API de login con un JWT válido
-      cy.intercept('POST', '**/auth/login', {
-        statusCode: 200,
-        body: { token: validJwtToken }
-      }).as('loginSuccess');
+    it('debe enviar credenciales correctas', () => {
+      cy.mockLoginApi({ success: true });
       
-      // Llenar formulario
       cy.get('input[name="email"]').type('test@example.com');
       cy.get('input[name="password"]').type('password123');
       cy.get('input[type="submit"]').click();
       
-      // Esperar a que la request se complete
-      cy.wait('@loginSuccess');
+      cy.wait('@loginSuccess').its('request.body').should('deep.include', {
+        email: 'test@example.com',
+        password: 'password123'
+      });
       
-      // Verificar que la petición se hizo correctamente
-      cy.get('@loginSuccess').its('request.body').should('include', 'email=test%40example.com');
-      
-      // Nota: La redirección depende de que jwt_decode procese el token correctamente
-      // El token se almacena en localStorage como objeto JSON con estructura específica
+      cy.url().should('include', '/admin');
     });
 
-    it('debe mostrar error con credenciales inválidas', () => {
-      cy.intercept('POST', '**/auth/login', {
-        statusCode: 401,
-        body: { error: 'Invalid credentials' }
-      }).as('loginError');
+    it('debe mostrar error con credenciales incorrectas', () => {
+      cy.mockLoginApi({ success: false });
       
       cy.get('input[name="email"]').type('wrong@example.com');
-      cy.get('input[name="password"]').type('wrongpassword');
+      cy.get('input[name="password"]').type('wrongpass');
       cy.get('input[type="submit"]').click();
       
       cy.wait('@loginError');
-      
-      // Verificar que seguimos en /login
-      cy.url().should('include', '/login');
-      
-      // Verificar mensaje de error
-      cy.contains(/invalid|error|inválid/i).should('be.visible');
-    });
-  });
-
-  describe('Usando Fixtures', () => {
-    
-    it('debe hacer login con datos de fixture', () => {
-      // Usar custom command mockLoginApi que incluye un JWT válido
-      cy.mockLoginApi({ success: true });
-      
-      cy.fixture('users').then((users) => {
-        cy.get('input[name="email"]').type(users.validUser.email);
-        cy.get('input[name="password"]').type(users.validUser.password);
-        cy.get('input[type="submit"]').click();
-        
-        cy.wait('@loginSuccess');
-        cy.url().should('include', '/admin');
-      });
+      cy.contains(/invalid|error|incorrect/i).should('be.visible');
     });
   });
 });
 ```
 
-## Ejemplo: Formulario de Admin (Crear Proyecto)
+---
 
-El proyecto tiene un formulario en `/admin` para crear nuevos proyectos.
+## Opciones de .type()
+
+El comando `.type()` tiene varias opciones útiles:
 
 ```typescript
-// cypress/e2e/admin/create-project.cy.ts
+// Typing normal
+cy.get('input').type('texto normal');
 
-describe('Admin - Crear Proyecto', () => {
+// Teclas especiales
+cy.get('input').type('{enter}');           // Enter
+cy.get('input').type('{backspace}');       // Borrar
+cy.get('input').type('{selectall}');       // Seleccionar todo
+cy.get('input').type('{del}');             // Delete
+
+// Combinaciones
+cy.get('input').type('{ctrl+a}');          // Ctrl+A (seleccionar todo)
+cy.get('input').type('{cmd+c}');           // Cmd+C (copiar)
+
+// Escribir lento (para debugging)
+cy.get('input').type('texto', { delay: 100 });
+
+// Forzar en elemento no enfocable
+cy.get('input').type('texto', { force: true });
+```
+
+### Secuencias de teclas
+
+```typescript
+it('debe borrar y reemplazar texto', () => {
+  cy.get('input[name="email"]')
+    .type('viejo@email.com')
+    .type('{selectall}')
+    .type('nuevo@email.com')
+    .should('have.value', 'nuevo@email.com');
+});
+
+it('debe navegar con teclado', () => {
+  cy.get('input[name="email"]').type('test@example.com');
+  cy.get('input[name="email"]').type('{tab}');
+  cy.get('input[name="password"]').should('be.focused');
+});
+```
+
+---
+
+## Test de Formulario Admin
+
+El formulario de admin permite editar el perfil del usuario.
+
+```typescript
+// cypress/e2e/admin/profile.cy.ts
+
+describe('Formulario de Perfil Admin', () => {
   
   beforeEach(() => {
-    // Mockear login y APIs necesarias
-    cy.intercept('POST', '**/auth/login', {
-      statusCode: 200,
-      body: { token: 'admin-token' }
-    }).as('login');
+    // Mockear login y dashboard
+    cy.mockLoginApi({ success: true });
+    cy.mockDashboardApi();
     
-    // Login primero
+    // Hacer login primero
     cy.visit('/login');
-    cy.get('input[name="email"]').type('admin@example.com');
-    cy.get('input[name="password"]').type('admin123');
+    cy.get('input[name="email"]').type('test@example.com');
+    cy.get('input[name="password"]').type('password123');
     cy.get('input[type="submit"]').click();
-    cy.wait('@login');
+    
+    cy.wait('@loginSuccess');
+    cy.url().should('include', '/admin');
   });
 
-  it('debe crear un nuevo proyecto', () => {
-    // Mockear el POST de proyecto
-    cy.intercept('POST', '**/v1/projects', {
-      statusCode: 200,
-      body: {
-        _id: 'new-project-id',
-        title: 'Nuevo Proyecto E2E',
-        description: 'Creado en test E2E',
-        version: '1.0.0',
-        link: 'https://github.com/test',
-        tag: 'testing',
-        timestamp: Date.now()
-      }
-    }).as('createProject');
+  it('debe mostrar el formulario de aboutme', () => {
+    cy.get('[data-testid="aboutme-form"]').should('be.visible');
+  });
+
+  it('debe cargar datos existentes', () => {
+    cy.wait('@getAboutMe');
     
-    // Mockear también el dashboard para cuando redirija
-    cy.intercept('GET', '**/v1/aboutme/', { fixture: 'aboutme.json' });
-    cy.intercept('GET', '**/v1/projects/', { fixture: 'projects.json' });
+    // Los campos deben tener valores precargados
+    cy.get('input[name="name"]').should('not.have.value', '');
+  });
+
+  it('debe poder editar el nombre', () => {
+    cy.wait('@getAboutMe');
     
-    // Llenar el formulario
-    cy.get('input[name="title"]').type('Nuevo Proyecto E2E');
-    cy.get('input[name="description"]').type('Creado en test E2E');
-    cy.get('input[name="link"]').type('https://github.com/test');
-    cy.get('input[name="tags"]').type('testing');
-    cy.get('input[name="version"]').type('1.0.0');
+    // Mockear update
+    cy.intercept('PUT', '**/v1/aboutme/**', { statusCode: 200 }).as('updateAboutMe');
     
-    // Submit
-    cy.get('input[type="submit"]').click();
+    cy.get('input[name="name"]')
+      .clear()
+      .type('Nuevo Nombre');
     
-    // Verificar request
-    cy.wait('@createProject').its('request.body').should((body) => {
-      expect(body).to.have.property('title', 'Nuevo Proyecto E2E');
-      expect(body).to.have.property('description', 'Creado en test E2E');
+    cy.contains('button', /save|guardar/i).click();
+    
+    cy.wait('@updateAboutMe').its('request.body').should('include', {
+      name: 'Nuevo Nombre'
     });
-    
-    // Debería redirigir al dashboard
-    cy.url().should('include', '/dashboard');
   });
 
-  it('debe deshabilitar submit con campos vacíos', () => {
-    // El botón submit debería estar deshabilitado si faltan campos
-    cy.get('input[type="submit"]').should('be.disabled');
-    
-    // Llenar solo algunos campos
-    cy.get('input[name="title"]').type('Solo Titulo');
-    
-    // Aún debería estar deshabilitado
-    cy.get('input[type="submit"]').should('be.disabled');
-  });
-
-  it('debe poder resetear el formulario', () => {
-    // Llenar campos
-    cy.get('input[name="title"]').type('Proyecto a borrar');
-    cy.get('input[name="description"]').type('Descripción a borrar');
-    
-    // Click en reset
-    cy.get('input[type="reset"]').click();
-    
-    // Verificar que los campos están vacíos
-    cy.get('input[name="title"]').should('have.value', '');
-    cy.get('input[name="description"]').should('have.value', '');
+  it('debe manejar textarea multilinea', () => {
+    cy.get('textarea[name="bio"]')
+      .clear()
+      .type('Línea 1{enter}Línea 2{enter}Línea 3')
+      .should('contain.value', 'Línea 1');
   });
 });
 ```
 
-## Técnicas de Testing de Formularios
+---
 
-### 1. Llenado de Inputs
-
-```typescript
-// Texto simple
-cy.get('input[name="email"]').type('user@example.com');
-
-// Limpiar antes de escribir
-cy.get('input[name="email"]').clear().type('new@example.com');
-
-// Caracteres especiales
-cy.get('input[name="password"]').type('p@ssw0rd!{enter}');
-
-// Typing lento (útil para debugging)
-cy.get('input').type('slow typing', { delay: 100 });
-```
-
-### 2. Verificaciones de Estado
+## Checkbox y Radio
 
 ```typescript
-// Verificar valor
-cy.get('input[name="email"]').should('have.value', 'user@example.com');
+describe('Formulario con checkbox y radio', () => {
+  
+  it('debe marcar checkbox', () => {
+    cy.get('input[type="checkbox"]').check();
+    cy.get('input[type="checkbox"]').should('be.checked');
+  });
 
-// Verificar que está vacío
-cy.get('input[name="email"]').should('have.value', '');
+  it('debe desmarcar checkbox', () => {
+    cy.get('input[type="checkbox"]').check();
+    cy.get('input[type="checkbox"]').uncheck();
+    cy.get('input[type="checkbox"]').should('not.be.checked');
+  });
 
-// Verificar placeholder
-cy.get('input[name="email"]').should('have.attr', 'placeholder', 'Email');
+  it('debe seleccionar radio button', () => {
+    cy.get('input[type="radio"][value="opcion1"]').check();
+    cy.get('input[type="radio"][value="opcion1"]').should('be.checked');
+    cy.get('input[type="radio"][value="opcion2"]').should('not.be.checked');
+  });
 
-// Verificar disabled
-cy.get('button[type="submit"]').should('be.disabled');
-cy.get('button[type="submit"]').should('not.be.disabled');
+  it('debe marcar múltiples checkboxes', () => {
+    cy.get('input[type="checkbox"]').check(['tech1', 'tech2']);
+  });
+});
 ```
 
-### 3. Interacción con Checkboxes y Radios
+---
+
+## Select Dropdowns
 
 ```typescript
-// Checkbox
-cy.get('[data-testid="terms-checkbox"]').check();
-cy.get('[data-testid="terms-checkbox"]').uncheck();
-cy.get('[data-testid="terms-checkbox"]').should('be.checked');
+describe('Formulario con select', () => {
+  
+  it('debe seleccionar por valor', () => {
+    cy.get('select[name="country"]').select('ES');
+    cy.get('select[name="country"]').should('have.value', 'ES');
+  });
 
-// Radio buttons
-cy.get('[data-testid="option-1"]').check();
-cy.get('[data-testid="option-1"]').should('be.checked');
+  it('debe seleccionar por texto visible', () => {
+    cy.get('select[name="country"]').select('España');
+  });
+
+  it('debe seleccionar múltiples valores', () => {
+    cy.get('select[multiple]').select(['opcion1', 'opcion2']);
+  });
+});
 ```
 
-### 4. Selects y Dropdowns
+---
+
+## Usando Fixtures para Datos
 
 ```typescript
-// Select nativo
-cy.get('select[name="country"]').select('Spain');
-cy.get('select[name="country"]').select('ES'); // Por value
+describe('Login con datos de fixture', () => {
+  
+  beforeEach(() => {
+    cy.visit('/login');
+  });
 
-// Verificar selección
-cy.get('select[name="country"]').should('have.value', 'ES');
+  it('debe hacer login con usuario válido', () => {
+    cy.mockLoginApi({ success: true });
+    
+    cy.fixture('users').then((users) => {
+      cy.get('input[name="email"]').type(users.validUser.email);
+      cy.get('input[name="password"]').type(users.validUser.password);
+      cy.get('input[type="submit"]').click();
+    });
+    
+    cy.wait('@loginSuccess');
+    cy.url().should('include', '/admin');
+  });
+
+  it('debe fallar con usuario inválido', () => {
+    cy.mockLoginApi({ success: false });
+    
+    cy.fixture('users').then((users) => {
+      cy.get('input[name="email"]').type(users.invalidUser.email);
+      cy.get('input[name="password"]').type(users.invalidUser.password);
+      cy.get('input[type="submit"]').click();
+    });
+    
+    cy.wait('@loginError');
+    cy.url().should('include', '/login');
+  });
+});
 ```
 
-## Buenas Prácticas
+---
 
-1. **Usar selectores semánticos**: `input[name="email"]` en vez de clases CSS
-2. **Mockear APIs**: No depender de backend real para tests de UI
-3. **Verificar estados**: Loading, success, error
-4. **Limpiar estado**: Usar `beforeEach` para reset
-5. **Tests aislados**: Cada test debe poder ejecutarse solo
+## Verificar Estado del Formulario
+
+### Assertions comunes
+
+```typescript
+// Valor actual
+cy.get('input').should('have.value', 'texto');
+
+// Campo vacío
+cy.get('input').should('have.value', '');
+
+// Placeholder
+cy.get('input').should('have.attr', 'placeholder', 'Email');
+
+// Deshabilitado
+cy.get('button').should('be.disabled');
+
+// Habilitado
+cy.get('button').should('be.enabled');
+
+// Requerido
+cy.get('input').should('have.attr', 'required');
+
+// Tipo de input
+cy.get('input').should('have.attr', 'type', 'password');
+
+// Válido/Inválido (HTML5)
+cy.get('input:valid').should('exist');
+cy.get('input:invalid').should('exist');
+```
+
+---
+
+## Errores Comunes
+
+### El input no recibe el texto
+
+```typescript
+// ❌ El elemento puede no estar listo
+cy.get('input').type('texto');
+
+// ✅ Esperar a que sea interactuable
+cy.get('input').should('be.visible').type('texto');
+
+// ✅ Forzar si es necesario
+cy.get('input').type('texto', { force: true });
+```
+
+### El formulario hace submit antes de tiempo
+
+```typescript
+// ❌ Enter dispara submit
+cy.get('input').type('texto{enter}');
+
+// ✅ Evitar enter si no es intencional
+cy.get('input').type('texto');
+cy.get('button[type="submit"]').click();
+```
+
+### Clear no funciona
+
+```typescript
+// ❌ Input controlado no se limpia
+cy.get('input').clear();
+
+// ✅ Seleccionar todo y sobrescribir
+cy.get('input').type('{selectall}nuevo texto');
+```
+
+---
+
+## Resumen
+
+| Acción | Comando |
+|--------|---------|
+| Escribir texto | `.type('texto')` |
+| Borrar contenido | `.clear()` |
+| Marcar checkbox | `.check()` |
+| Desmarcar checkbox | `.uncheck()` |
+| Seleccionar dropdown | `.select('valor')` |
+| Submit formulario | `.submit()` o click en button |
+| Verificar valor | `.should('have.value', 'x')` |
+| Verificar checked | `.should('be.checked')` |
+
+---
+
+## Próximos Pasos
+
+Con los formularios dominados:
+
+1. **[Intercepción](./intercept)** - Mockear APIs
+2. **[Custom Commands](./custom-commands)** - Reutilizar lógica de login

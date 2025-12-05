@@ -1,355 +1,491 @@
 ---
-sidebar_position: 9
-title: "Intercepción de Requests"
+sidebar_position: 8
+title: "Intercepción de APIs"
 ---
 
-# Intercepción de Requests
+`cy.intercept()` permite interceptar y mockear peticiones HTTP. Es fundamental para tests E2E porque controlas las respuestas del servidor.
 
-## cy.intercept()
+## ¿Por qué Interceptar?
 
-Interceptar requests HTTP para:
-- Mockear respuestas
-- Verificar requests
-- Simular errores
-- Control de timing
+| Razón | Beneficio |
+|-------|-----------|
+| **Velocidad** | No esperas a servidor real |
+| **Determinismo** | Siempre misma respuesta |
+| **Edge cases** | Simulas errores, timeouts |
+| **Aislamiento** | Test no depende de backend |
 
-## Ejemplo: Mockear API
+---
 
-```typescript
-describe('API Mocking', () => {
-  
-  it('debe cargar usuarios desde API', () => {
-    // Interceptar request y mockear respuesta
-    cy.intercept('GET', '/api/users', {
-      statusCode: 200,
-      body: [
-        { id: 1, name: 'Alice' },
-        { id: 2, name: 'Bob' },
-      ],
-    }).as('getUsers');
-    
-    cy.visit('/users');
-    
-    // Esperar a que request se complete
-    cy.wait('@getUsers');
-    
-    // Verificar que datos se muestran
-    cy.contains('Alice').should('be.visible');
-    cy.contains('Bob').should('be.visible');
-  });
+## APIs del Proyecto
 
-  it('debe manejar error de API', () => {
-    cy.intercept('GET', '/api/users', {
-      statusCode: 500,
-      body: { error: 'Server error' },
-    }).as('getUsersError');
-    
-    cy.visit('/users');
-    cy.wait('@getUsersError');
-    
-    // Verificar mensaje de error
-    cy.get('[data-testid="error-message"]')
-      .should('contain', 'Error loading users');
-  });
+El proyecto **Taller-Testing-Security** usa estas APIs:
 
-  it('debe verificar payload de POST', () => {
-    cy.intercept('POST', '/api/users').as('createUser');
-    
-    cy.visit('/users/new');
-    
-    // Llenar formulario
-    cy.get('[data-testid="name-input"]').type('Charlie');
-    cy.get('[data-testid="email-input"]').type('charlie@example.com');
-    cy.get('[data-testid="submit"]').click();
-    
-    // Verificar request
-    cy.wait('@createUser').its('request.body').should('deep.equal', {
-      name: 'Charlie',
-      email: 'charlie@example.com',
-    });
-  });
-});
-```
+| Endpoint | Método | Descripción |
+|----------|--------|-------------|
+| `/api/auth/login` | POST | Autenticación |
+| `/api/v1/aboutme/` | GET | Información del perfil |
+| `/api/v1/projects/` | GET | Lista de proyectos |
+| `/api/v1/aboutme/:id` | PUT | Actualizar perfil |
+| `/api/v1/projects/:id` | PUT/DELETE | CRUD proyectos |
 
-## Ejemplo: Simular Latencia
+---
+
+## Sintaxis Básica
 
 ```typescript
-describe('Loading States', () => {
-  
-  it('debe mostrar loading durante fetch', () => {
-    cy.intercept('GET', '/api/users', (req) => {
-      req.reply((res) => {
-        // Delay de 2 segundos
-        res.delay = 2000;
-        res.send({
-          statusCode: 200,
-          body: [{ id: 1, name: 'Alice' }],
-        });
-      });
-    }).as('getUsers');
-    
-    cy.visit('/users');
-    
-    // Verificar loading
-    cy.get('[data-testid="loading"]').should('be.visible');
-    
-    // Esperar respuesta
-    cy.wait('@getUsers');
-    
-    // Verificar loading desapareció
-    cy.get('[data-testid="loading"]').should('not.exist');
-    cy.contains('Alice').should('be.visible');
-  });
-});
+// Interceptar GET
+cy.intercept('GET', '/api/endpoint', { fixture: 'data.json' });
+
+// Interceptar POST
+cy.intercept('POST', '/api/endpoint', { statusCode: 200 });
+
+// Con alias para esperar
+cy.intercept('GET', '/api/endpoint', { fixture: 'data.json' }).as('getData');
+cy.wait('@getData');
 ```
 
-## Fixtures
+---
 
-```typescript
-// cypress/fixtures/users.json
-[
-  {
-    "id": 1,
-    "name": "Alice",
-    "email": "alice@example.com"
-  },
-  {
-    "id": 2,
-    "name": "Bob",
-    "email": "bob@example.com"
-  }
-]
-```
+## Interceptar Login
 
-```typescript
-describe('Using Fixtures', () => {
-  
-  it('debe usar datos de fixture', () => {
-    cy.intercept('GET', '/api/users', { fixture: 'users.json' }).as('getUsers');
-    
-    cy.visit('/users');
-    cy.wait('@getUsers');
-    
-    cy.contains('Alice').should('be.visible');
-    cy.contains('Bob').should('be.visible');
-  });
-});
-```
-
-## Ejemplo Real: Proyecto Taller-Testing-Security
-
-### Fixtures del Proyecto
-
-**cypress/fixtures/aboutme.json**
-```json
-{
-  "_id": "507f1f77bcf86cd799439011",
-  "name": "Lucas Fernandez",
-  "birthday": 631152000000,
-  "nationality": "Spanish",
-  "job": "Software Developer",
-  "github": "https://github.com/lucferbux"
-}
-```
-
-**cypress/fixtures/projects.json**
-```json
-[
-  {
-    "_id": "507f1f77bcf86cd799439012",
-    "title": "Taller Testing & Security",
-    "description": "Proyecto educativo sobre testing y seguridad en aplicaciones web",
-    "version": "1.0.0",
-    "link": "https://github.com/lucferbux/Taller-Testing-Security",
-    "tag": "education",
-    "timestamp": 1700000000000
-  },
-  {
-    "_id": "507f1f77bcf86cd799439013",
-    "title": "React Dashboard",
-    "description": "Dashboard administrativo con React y TypeScript",
-    "version": "2.1.0",
-    "link": "https://github.com/lucferbux/react-dashboard",
-    "tag": "react",
-    "timestamp": 1699900000000
-  }
-]
-```
-
-### Test de Dashboard con Intercept
-
-```typescript
-// cypress/e2e/dashboard/dashboard.cy.ts
-
-describe('Dashboard Page', () => {
-  
-  describe('Carga de Datos', () => {
-    
-    it('debe cargar y mostrar la información del perfil', () => {
-      // Interceptar las APIs del dashboard
-      cy.intercept('GET', '**/v1/aboutme/', { fixture: 'aboutme.json' }).as('getAboutMe');
-      cy.intercept('GET', '**/v1/projects/', { fixture: 'projects.json' }).as('getProjects');
-      
-      cy.visit('/dashboard');
-      
-      // Esperar a que las APIs respondan
-      cy.wait(['@getAboutMe', '@getProjects']);
-      
-      // Verificar que se muestra la información
-      cy.contains('Lucas Fernandez').should('be.visible');
-      cy.contains('Taller Testing & Security').should('be.visible');
-    });
-
-    it('debe mostrar loading mientras carga los datos', () => {
-      // Mockear con delay para ver el loading
-      cy.intercept('GET', '**/v1/aboutme/', {
-        statusCode: 200,
-        body: { name: 'Test' },
-        delay: 1000
-      }).as('getAboutMe');
-      
-      cy.intercept('GET', '**/v1/projects/', {
-        statusCode: 200,
-        body: [],
-        delay: 1000
-      }).as('getProjects');
-      
-      cy.visit('/dashboard');
-      
-      // Verificar que aparece el loader
-      cy.contains(/loading|cargando/i).should('be.visible');
-    });
-  });
-
-  describe('Manejo de Errores', () => {
-    
-    it('debe mostrar mensaje de error cuando la API falla', () => {
-      cy.intercept('GET', '**/v1/aboutme/', { statusCode: 500 }).as('getAboutMeError');
-      cy.intercept('GET', '**/v1/projects/', { statusCode: 500 }).as('getProjectsError');
-      
-      cy.visit('/dashboard');
-      
-      // Verificar mensaje de error
-      cy.contains(/error/i).should('be.visible');
-    });
-  });
-});
-```
-
-### Test de Login con Intercept
-
-```typescript
-// cypress/e2e/auth/login.cy.ts
-
-describe('Login Page', () => {
-
-  describe('Login con API Mockeada', () => {
-    
-    /**
-     * IMPORTANTE: La app usa jwt_decode para extraer información del token,
-     * por lo que necesitamos usar un JWT válido en los mocks.
-     */
-    const validJwtToken = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJfaWQiOiI1MDdmMWY3N2JjZjg2Y2Q3OTk0MzkwMTEiLCJlbWFpbCI6InRlc3RAZXhhbXBsZS5jb20iLCJpYXQiOjE3MDAwMDAwMDAsImV4cCI6MTkwMDAwMDAwMH0.Qs8nKjZ7GJXK7YjA_rOqwM7hK5dYWLNg8c3d_mLc8Z0';
-
-    it('debe hacer login exitoso y verificar la petición', () => {
-      // Mockear la API de login con un JWT válido
-      cy.intercept('POST', '**/auth/login', {
-        statusCode: 200,
-        body: { token: validJwtToken }
-      }).as('loginSuccess');
-      
-      cy.visit('/login');
-      
-      // Llenar formulario
-      cy.get('input[name="email"]').type('test@example.com');
-      cy.get('input[name="password"]').type('password123');
-      cy.get('input[type="submit"]').click();
-      
-      // Esperar a que la request se complete
-      cy.wait('@loginSuccess');
-      
-      // Verificar que la petición se hizo correctamente
-      cy.get('@loginSuccess').its('request.body').should('include', 'email=test%40example.com');
-      cy.get('@loginSuccess').its('response.statusCode').should('eq', 200);
-    });
-
-    it('debe mostrar error con credenciales inválidas', () => {
-      // Mockear respuesta de error
-      cy.intercept('POST', '**/auth/login', {
-        statusCode: 401,
-        body: { error: 'Invalid credentials' }
-      }).as('loginError');
-      
-      cy.visit('/login');
-      
-      cy.get('input[name="email"]').type('wrong@example.com');
-      cy.get('input[name="password"]').type('wrongpassword');
-      cy.get('input[type="submit"]').click();
-      
-      cy.wait('@loginError');
-      
-      // Verificar que seguimos en /login
-      cy.url().should('include', '/login');
-      
-      // Verificar mensaje de error
-      cy.contains(/invalid|error|inválid/i).should('be.visible');
-    });
-
-    it('debe verificar el payload enviado', () => {
-      cy.intercept('POST', '**/auth/login', (req) => {
-        // Verificar que el body contiene las credenciales
-        expect(req.body).to.include('email=test%40example.com');
-        expect(req.body).to.include('password=password123');
-        
-        req.reply({ statusCode: 200, body: { token: validJwtToken } });
-      }).as('loginRequest');
-      
-      cy.visit('/login');
-      cy.get('input[name="email"]').type('test@example.com');
-      cy.get('input[name="password"]').type('password123');
-      cy.get('input[type="submit"]').click();
-      
-      cy.wait('@loginRequest');
-    });
-  });
-});
-```
-
-### Custom Command con Intercept
+### Mockear login exitoso
 
 ```typescript
 // cypress/support/commands.ts
 
-Cypress.Commands.add('mockDashboardApi', (options?: { 
-  aboutMe?: object; 
-  projects?: object[];
-  delay?: number;
-  error?: boolean;
-}) => {
-  if (options?.error) {
-    cy.intercept('GET', '**/v1/aboutme/', { statusCode: 500 }).as('getAboutMeError');
-    cy.intercept('GET', '**/v1/projects/', { statusCode: 500 }).as('getProjectsError');
+Cypress.Commands.add('mockLoginApi', (options = { success: true }) => {
+  if (options.success) {
+    cy.intercept('POST', '**/auth/login', {
+      statusCode: 200,
+      body: {
+        token: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJfaWQiOiI1MDdmMWY3N2JjZjg2Y2Q3OTk0MzkwMTEiLCJlbWFpbCI6InRlc3RAZXhhbXBsZS5jb20iLCJpYXQiOjE3MDAwMDAwMDAsImV4cCI6MTkwMDAwMDAwMH0.Qs8nKjZ7GJXK7YjA_rOqwM7hK5dYWLNg8c3d_mLc8Z0',
+        user: {
+          _id: '507f1f77bcf86cd799439011',
+          email: 'test@example.com'
+        }
+      }
+    }).as('loginSuccess');
   } else {
-    cy.intercept('GET', '**/v1/aboutme/', {
-      statusCode: 200,
-      body: options?.aboutMe || { name: 'Test User' },
-      delay: options?.delay || 0
-    }).as('getAboutMe');
-
-    cy.intercept('GET', '**/v1/projects/', {
-      statusCode: 200,
-      body: options?.projects || [],
-      delay: options?.delay || 0
-    }).as('getProjects');
+    cy.intercept('POST', '**/auth/login', {
+      statusCode: 401,
+      body: {
+        error: 'Invalid credentials'
+      }
+    }).as('loginError');
   }
 });
+```
 
-// Uso en tests:
-describe('Dashboard', () => {
-  it('usa custom command para mockear', () => {
-    cy.mockDashboardApi({ delay: 500 });
-    cy.visit('/dashboard');
-    cy.wait(['@getAboutMe', '@getProjects']);
+### Usar en test
+
+```typescript
+// cypress/e2e/auth/login.cy.ts
+
+describe('Login', () => {
+  
+  it('debe hacer login exitoso', () => {
+    cy.mockLoginApi({ success: true });
+    
+    cy.visit('/login');
+    cy.get('input[name="email"]').type('test@example.com');
+    cy.get('input[name="password"]').type('password123');
+    cy.get('input[type="submit"]').click();
+    
+    // Esperar a que el mock responda
+    cy.wait('@loginSuccess');
+    
+    // Verificar redirección
+    cy.url().should('include', '/admin');
+  });
+
+  it('debe mostrar error con credenciales inválidas', () => {
+    cy.mockLoginApi({ success: false });
+    
+    cy.visit('/login');
+    cy.get('input[name="email"]').type('wrong@example.com');
+    cy.get('input[name="password"]').type('wrongpass');
+    cy.get('input[type="submit"]').click();
+    
+    cy.wait('@loginError');
+    
+    // Sigue en login con error
+    cy.url().should('include', '/login');
+    cy.contains(/invalid|error/i).should('be.visible');
   });
 });
 ```
+
+---
+
+## Interceptar Dashboard APIs
+
+### Mockear aboutme y projects
+
+```typescript
+// cypress/support/commands.ts
+
+Cypress.Commands.add('mockDashboardApi', (options = {}) => {
+  const { delay = 0, error = false } = options;
+  
+  if (error) {
+    cy.intercept('GET', '**/v1/aboutme/', {
+      statusCode: 500,
+      body: { error: 'Server error' }
+    }).as('getAboutMe');
+    
+    cy.intercept('GET', '**/v1/projects/', {
+      statusCode: 500,
+      body: { error: 'Server error' }
+    }).as('getProjects');
+  } else {
+    cy.intercept('GET', '**/v1/aboutme/', {
+      statusCode: 200,
+      body: { fixture: 'aboutme.json' },
+      delay: delay
+    }).as('getAboutMe');
+    
+    cy.intercept('GET', '**/v1/projects/', {
+      statusCode: 200,
+      body: { fixture: 'projects.json' },
+      delay: delay
+    }).as('getProjects');
+  }
+});
+```
+
+### Usar fixtures
+
+```json
+// cypress/fixtures/aboutme.json
+{
+  "_id": "507f1f77bcf86cd799439011",
+  "name": "Lucas Fernandez",
+  "bio": "Full Stack Developer",
+  "location": "Madrid, Spain",
+  "email": "lucas@example.com"
+}
+```
+
+```json
+// cypress/fixtures/projects.json
+[
+  {
+    "_id": "60d5ecb54f3c2b001f8e4b1a",
+    "title": "Taller Testing",
+    "description": "Proyecto de testing E2E",
+    "technologies": ["React", "Cypress", "TypeScript"]
+  },
+  {
+    "_id": "60d5ecb54f3c2b001f8e4b1b",
+    "title": "API Backend",
+    "description": "API REST con Express",
+    "technologies": ["Node.js", "Express", "MongoDB"]
+  }
+]
+```
+
+### Test del dashboard
+
+```typescript
+// cypress/e2e/dashboard/dashboard.cy.ts
+
+describe('Dashboard', () => {
+  
+  beforeEach(() => {
+    cy.mockDashboardApi();
+  });
+
+  it('debe cargar perfil y proyectos', () => {
+    cy.visit('/dashboard');
+    
+    // Esperar ambas APIs
+    cy.wait(['@getAboutMe', '@getProjects']);
+    
+    // Verificar datos cargados
+    cy.contains('Lucas Fernandez').should('be.visible');
+    cy.contains('Taller Testing').should('be.visible');
+  });
+
+  it('debe mostrar loading mientras carga', () => {
+    cy.mockDashboardApi({ delay: 1000 });
+    
+    cy.visit('/dashboard');
+    
+    // Loading visible
+    cy.contains(/loading|cargando/i).should('be.visible');
+    
+    // Esperar carga
+    cy.wait(['@getAboutMe', '@getProjects']);
+    
+    // Loading desaparece
+    cy.contains(/loading|cargando/i).should('not.exist');
+  });
+
+  it('debe manejar error de API', () => {
+    cy.mockDashboardApi({ error: true });
+    
+    cy.visit('/dashboard');
+    
+    // Muestra error
+    cy.contains(/error/i).should('be.visible');
+  });
+});
+```
+
+---
+
+## Patrones de Intercepción
+
+### Glob patterns
+
+```typescript
+// Cualquier método a /api/...
+cy.intercept('**/api/**');
+
+// Solo GET a v1
+cy.intercept('GET', '**/v1/**');
+
+// Endpoint específico con ID dinámico
+cy.intercept('GET', '**/projects/*');
+```
+
+### Por regex
+
+```typescript
+// Endpoints que terminan en número
+cy.intercept('GET', /\/projects\/\d+$/);
+
+// Cualquier v1 o v2
+cy.intercept('GET', /\/v[12]\//);
+```
+
+### Por RouteMatcher
+
+```typescript
+cy.intercept({
+  method: 'GET',
+  url: '**/api/projects*',
+  query: {
+    page: '1'
+  }
+}).as('getProjectsPage1');
+```
+
+---
+
+## Respuestas Dinámicas
+
+### Función de respuesta
+
+```typescript
+cy.intercept('POST', '**/auth/login', (req) => {
+  // Verificar body de request
+  if (req.body.email === 'admin@example.com') {
+    req.reply({
+      statusCode: 200,
+      body: { token: 'admin-token', role: 'admin' }
+    });
+  } else {
+    req.reply({
+      statusCode: 200,
+      body: { token: 'user-token', role: 'user' }
+    });
+  }
+}).as('login');
+```
+
+### Modificar request
+
+```typescript
+cy.intercept('POST', '**/api/**', (req) => {
+  // Agregar header
+  req.headers['X-Test-Header'] = 'cypress';
+  
+  // Modificar body
+  req.body.timestamp = Date.now();
+  
+  // Continuar con request modificada
+  req.continue();
+}).as('modifiedRequest');
+```
+
+### Modificar response
+
+```typescript
+cy.intercept('GET', '**/projects/', (req) => {
+  req.continue((res) => {
+    // Agregar proyecto extra
+    res.body.push({
+      _id: 'extra-1',
+      title: 'Proyecto Extra',
+      description: 'Agregado por Cypress'
+    });
+  });
+}).as('projectsWithExtra');
+```
+
+---
+
+## Verificar Requests
+
+### Verificar que se envió request
+
+```typescript
+it('debe enviar las credenciales', () => {
+  cy.mockLoginApi({ success: true });
+  
+  cy.visit('/login');
+  cy.get('input[name="email"]').type('test@example.com');
+  cy.get('input[name="password"]').type('password123');
+  cy.get('input[type="submit"]').click();
+  
+  // Verificar el request que se envió
+  cy.wait('@loginSuccess').then((interception) => {
+    expect(interception.request.body).to.deep.include({
+      email: 'test@example.com',
+      password: 'password123'
+    });
+  });
+});
+```
+
+### Sintaxis alternativa
+
+```typescript
+cy.wait('@loginSuccess').its('request.body').should('deep.include', {
+  email: 'test@example.com'
+});
+
+cy.wait('@loginSuccess').its('response.statusCode').should('eq', 200);
+```
+
+---
+
+## Simular Escenarios
+
+### Network error
+
+```typescript
+cy.intercept('GET', '**/api/projects/', {
+  forceNetworkError: true
+}).as('networkError');
+```
+
+### Timeout
+
+```typescript
+cy.intercept('GET', '**/api/projects/', {
+  delay: 30000,
+  body: []
+}).as('slowResponse');
+```
+
+### Diferentes status codes
+
+```typescript
+// 401 Unauthorized
+cy.intercept('GET', '**/api/admin/**', {
+  statusCode: 401,
+  body: { error: 'Unauthorized' }
+}).as('unauthorized');
+
+// 404 Not Found
+cy.intercept('GET', '**/api/users/999', {
+  statusCode: 404,
+  body: { error: 'Not found' }
+}).as('notFound');
+
+// 500 Server Error
+cy.intercept('POST', '**/api/**', {
+  statusCode: 500,
+  body: { error: 'Internal server error' }
+}).as('serverError');
+```
+
+---
+
+## Orden de Interceptores
+
+Los interceptores se evalúan en orden inverso (último primero):
+
+```typescript
+// Este se ignora para /projects/1
+cy.intercept('GET', '**/projects/*', { fixture: 'projects.json' });
+
+// Este tiene prioridad para /projects/1
+cy.intercept('GET', '**/projects/1', { fixture: 'project-detail.json' });
+```
+
+---
+
+## Ejemplos Completos
+
+### Flujo completo de usuario
+
+```typescript
+// cypress/e2e/flows/complete-flow.cy.ts
+
+describe('Flujo completo', () => {
+  
+  it('debe hacer login, ver dashboard y crear proyecto', () => {
+    // Mockear login
+    cy.mockLoginApi({ success: true });
+    
+    // Mockear dashboard
+    cy.mockDashboardApi();
+    
+    // Mockear creación de proyecto
+    cy.intercept('POST', '**/v1/projects/', {
+      statusCode: 201,
+      body: {
+        _id: 'new-project-id',
+        title: 'Nuevo Proyecto',
+        description: 'Creado en test'
+      }
+    }).as('createProject');
+    
+    // Hacer login
+    cy.visit('/login');
+    cy.get('input[name="email"]').type('test@example.com');
+    cy.get('input[name="password"]').type('password123');
+    cy.get('input[type="submit"]').click();
+    
+    cy.wait('@loginSuccess');
+    cy.url().should('include', '/admin');
+    
+    // Crear proyecto
+    cy.contains('button', /new|nuevo/i).click();
+    cy.get('input[name="title"]').type('Nuevo Proyecto');
+    cy.get('textarea[name="description"]').type('Creado en test');
+    cy.contains('button', /save|guardar/i).click();
+    
+    // Verificar creación
+    cy.wait('@createProject').its('request.body').should('include', {
+      title: 'Nuevo Proyecto'
+    });
+  });
+});
+```
+
+---
+
+## Resumen
+
+| Uso | Comando |
+|-----|---------|
+| Interceptar request | `cy.intercept('METHOD', 'URL', response)` |
+| Usar fixture | `{ fixture: 'file.json' }` |
+| Alias para wait | `.as('alias')` |
+| Esperar request | `cy.wait('@alias')` |
+| Verificar request | `cy.wait('@alias').its('request.body')` |
+| Simular error | `{ statusCode: 500 }` |
+| Simular delay | `{ delay: 1000 }` |
+| Network error | `{ forceNetworkError: true }` |
+
+---
+
+## Próximos Pasos
+
+Con la intercepción dominada:
+
+1. **[Custom Commands](./custom-commands)** - Encapsular interceptores

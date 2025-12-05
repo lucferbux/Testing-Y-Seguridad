@@ -22,9 +22,10 @@ Imagina que estás construyendo un e-commerce. Puedes tener cientos de tests uni
 ## E2E en la Pirámide de Testing
 
 ```
-                /\
-               /  \
-              / E2E \  ← Esta sesión (10%)
+                 /\
+                /  \
+               /    \
+              / E2E  \  ← Esta sesión (10%)
              /--------\    Flujos completos de usuario
             /          \   Lentos, costosos, alta confianza
            / Integración\  (20%)

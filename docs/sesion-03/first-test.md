@@ -1,646 +1,45 @@
 ---
 sidebar_position: 5
-title: "Primer Test con Cypress"
+title: "Primer Test"
 ---
 
-# Primer Test con Cypress
+Vamos a crear nuestros primeros tests E2E para el proyecto **Taller-Testing-Security**.
 
-## Anatomía de un Test Cypress
+## Estructura de un Test
 
-Antes de escribir tests, es importante entender la **estructura básica** que Cypress utiliza, heredada de frameworks como Mocha y Chai.
-
-### Estructura Fundamental
+Cypress usa la sintaxis de Mocha/Chai. Un test tiene esta estructura:
 
 ```typescript
-describe('Nombre del conjunto de tests', () => {
+describe('Nombre del grupo de tests', () => {
   
   beforeEach(() => {
     // Se ejecuta ANTES de cada test
-    // Ideal para setup común
   });
   
   it('debe hacer algo específico', () => {
     // Test individual
-    // Cada 'it' es un test independiente
   });
   
   it('debe hacer otra cosa', () => {
-    // Otro test independiente
-  });
-  
-  afterEach(() => {
-    // Se ejecuta DESPUÉS de cada test
-    // Ideal para cleanup
+    // Otro test
   });
 });
 ```
 
-### Bloques Principales
-
-#### 1. `describe()` - Suite de Tests
-
-**Propósito**: Agrupar tests relacionados.
-
-```typescript
-// Describe agrupa tests por feature o página
-describe('Login Page', () => {
-  // Todos los tests de la página de login
-});
-
-describe('User Profile', () => {
-  // Todos los tests del perfil de usuario
-});
-```
-
-**Puedes anidar describes:**
-
-```typescript
-describe('Authentication', () => {
-  
-  describe('Login', () => {
-    it('debe permitir login exitoso', () => {});
-    it('debe mostrar error con credenciales inválidas', () => {});
-  });
-  
-  describe('Logout', () => {
-    it('debe cerrar sesión correctamente', () => {});
-  });
-});
-```
-
-#### 2. `it()` o `test()` - Test Individual
-
-**Propósito**: Definir un test específico.
-
-```typescript
-// 'it' y 'test' son sinónimos
-it('debe cargar la homepage', () => {
-  cy.visit('/');
-});
-
-// Equivalente
-test('debe cargar la homepage', () => {
-  cy.visit('/');
-});
-```
-
-**Convención de nombres**: Usa lenguaje descriptivo que explique **qué** hace el test.
-
-```typescript
-// ❌ Mal - No descriptivo
-it('test 1', () => {});
-
-// ✅ Bien - Descriptivo
-it('debe mostrar mensaje de error cuando email está vacío', () => {});
-```
-
-#### 3. Hooks de Ciclo de Vida
-
-**`beforeEach()`**: Setup antes de cada test
-
-```typescript
-describe('Dashboard', () => {
-  
-  beforeEach(() => {
-    // Se ejecuta antes de CADA test
-    cy.login(); // Login antes de cada test
-    cy.visit('/dashboard');
-  });
-  
-  it('test 1', () => { /* dashboard ya cargado */ });
-  it('test 2', () => { /* dashboard ya cargado */ });
-});
-```
-
-**`before()`**: Setup una sola vez antes de todos los tests
-
-```typescript
-before(() => {
-  // Se ejecuta UNA sola vez antes de todos los tests
-  cy.task('db:seed'); // Seed database una vez
-});
-```
-
-**`afterEach()`**: Cleanup después de cada test
-
-```typescript
-afterEach(() => {
-  // Limpiar después de cada test
-  cy.clearCookies();
-  cy.clearLocalStorage();
-});
-```
-
-**`after()`**: Cleanup una vez después de todos los tests
-
-```typescript
-after(() => {
-  // Se ejecuta UNA vez al final
-  cy.task('db:clear');
-});
-```
+| Bloque | Propósito |
+|--------|-----------|
+| `describe()` | Agrupa tests relacionados |
+| `beforeEach()` | Setup antes de cada test |
+| `it()` | Define un test individual |
+| `afterEach()` | Cleanup después de cada test |
 
 ---
 
-## Tu Primer Test: Homepage
+## Test 1: Landing Page
 
-Empecemos con un test simple que valida la homepage.
+Creamos nuestro primer test para verificar que la landing page carga correctamente.
 
-### Test Básico
-
-```typescript
-// cypress/e2e/homepage.cy.ts
-
-describe('Homepage', () => {
-  
-  it('debe visitar la página', () => {
-    // Paso 1: Navegar a la página
-    cy.visit('/');
-    
-    // Paso 2: Verificar que algo existe
-    cy.contains('Welcome');
-  });
-});
-```
-
-**¿Qué hace este test?**
-
-1. **`cy.visit('/')`**: Navega a la URL base (definida en `cypress.config.ts`)
-2. **`cy.contains('Welcome')`**: Busca cualquier elemento que contenga el texto "Welcome"
-
-**Si el test pasa**: La página cargó correctamente y contiene "Welcome"
-**Si falla**: O la página no cargó, o no encuentra el texto
-
-### Agregar Más Verificaciones
-
-```typescript
-describe('Homepage', () => {
-  
-  beforeEach(() => {
-    cy.visit('/');
-  });
-  
-  it('debe cargar correctamente', () => {
-    // Verificar título de la página
-    cy.title().should('include', 'Mi App');
-    
-    // Verificar elemento principal visible
-    cy.get('[data-testid="hero"]').should('be.visible');
-    
-    // Verificar que contiene texto específico
-    cy.contains('h1', 'Bienvenido').should('exist');
-  });
-  
-  it('debe tener meta descripción', () => {
-    // Verificar meta tag
-    cy.get('head meta[name="description"]')
-      .should('have.attr', 'content')
-      .and('not.be.empty');
-  });
-  
-  it('debe mostrar navegación', () => {
-    // Verificar que nav existe
-    cy.get('nav').should('be.visible');
-    
-    // Verificar que tiene al menos 3 links
-    cy.get('nav a').should('have.length.at.least', 3);
-  });
-});
-```
-
----
-
-## Ejemplo Completo: Test de Homepage con Docusaurus
-
-Vamos a crear un test completo que valide múltiples aspectos de una página Docusaurus.
-
-### Test Completo
-
-```typescript
-// cypress/e2e/homepage.cy.ts
-
-describe('Homepage - Docusaurus', () => {
-  
-  beforeEach(() => {
-    // Visitar homepage antes de cada test
-    cy.visit('/');
-  });
-
-  it('debe cargar correctamente', () => {
-    // Verificar título de la página
-    cy.title().should('include', 'Docusaurus');
-    
-    // Verificar que el hero section está visible
-    cy.get('[data-testid="hero"]')
-      .should('be.visible')
-      .and('contain', 'Welcome to Docusaurus');
-    
-    // Verificar que el logo existe
-    cy.get('img[alt="Docusaurus logo"]').should('exist');
-  });
-
-  it('debe mostrar navegación principal', () => {
-    // Verificar que navbar existe y es visible
-    cy.get('nav').should('be.visible');
-    
-    // Verificar que tiene múltiples links
-    cy.get('nav a')
-      .should('have.length.at.least', 3)
-      .first()
-      .should('be.visible');
-    
-    // Verificar link específico
-    cy.get('nav').contains('Docs').should('exist');
-  });
-
-  it('debe tener meta tags SEO', () => {
-    // Meta descripción
-    cy.get('head meta[name="description"]')
-      .should('have.attr', 'content')
-      .and('not.be.empty');
-    
-    // Open Graph tags
-    cy.get('head meta[property="og:title"]')
-      .should('have.attr', 'content');
-    
-    cy.get('head meta[property="og:description"]')
-      .should('have.attr', 'content');
-  });
-
-  it('debe tener botones de CTA visibles', () => {
-    // Buscar botón de "Get Started"
-    cy.contains('button, a', 'Get Started')
-      .should('be.visible')
-      .and('have.attr', 'href');
-    
-    // Buscar botón secundario
-    cy.contains('button, a', 'Learn More')
-      .should('be.visible');
-  });
-
-  it('debe responder en menos de 3 segundos', () => {
-    // Test de performance
-    cy.visit('/', {
-      onBeforeLoad: (win) => {
-        // Marcar inicio
-        win.performance.mark('start');
-      },
-      onLoad: (win) => {
-        // Marcar fin y medir
-        win.performance.mark('end');
-        win.performance.measure('pageLoad', 'start', 'end');
-        
-        const measure = win.performance.getEntriesByName('pageLoad')[0];
-        
-        // Assertion de performance
-        expect(measure.duration).to.be.lessThan(3000);
-      },
-    });
-  });
-  
-  it('debe ser responsive', () => {
-    // Test mobile
-    cy.viewport('iphone-x');
-    cy.get('[data-testid="mobile-menu-button"]').should('be.visible');
-    
-    // Test tablet
-    cy.viewport('ipad-2');
-    cy.get('nav').should('be.visible');
-    
-    // Test desktop
-    cy.viewport(1920, 1080);
-    cy.get('nav a').should('be.visible');
-  });
-});
-```
-
-### Desglose de Técnicas Utilizadas
-
-#### 1. **Selectores Diversos**
-
-```typescript
-// Por atributo data-testid (recomendado)
-cy.get('[data-testid="hero"]');
-
-// Por tag HTML
-cy.get('nav');
-
-// Por texto contenido
-cy.contains('Welcome');
-cy.contains('button', 'Get Started'); // Tag + texto
-
-// Por atributo
-cy.get('img[alt="Docusaurus logo"]');
-cy.get('meta[name="description"]');
-```
-
-#### 2. **Encadenamiento de Assertions**
-
-```typescript
-cy.get('[data-testid="hero"]')
-  .should('be.visible')        // Assertion 1
-  .and('contain', 'Welcome');  // Assertion 2
-```
-
-#### 3. **Testing de Atributos**
-
-```typescript
-cy.get('meta[name="description"]')
-  .should('have.attr', 'content')  // Tiene atributo 'content'
-  .and('not.be.empty');            // Y no está vacío
-```
-
-#### 4. **Viewport Testing (Responsive)**
-
-```typescript
-cy.viewport('iphone-x');     // Preset de iPhone X
-cy.viewport('ipad-2');       // Preset de iPad
-cy.viewport(1920, 1080);     // Custom width x height
-```
-
----
-
-## Ejecutar Tests
-
-### Modo Interactivo (Desarrollo)
-
-```bash
-npm run cy:open
-```
-
-**Ventajas:**
-- Ves la aplicación ejecutándose en tiempo real
-- Time-travel debugging
-- Hot reload de tests
-- Selector playground
-
-**Uso recomendado**: Durante desarrollo y debugging.
-
-### Modo Headless (CI/CD)
-
-```bash
-npm run cy:run
-```
-
-**Ventajas:**
-- Más rápido (sin GUI)
-- Ideal para CI/CD
-- Genera videos y screenshots automáticamente
-
-**Uso recomendado**: En pipelines de integración continua.
-
-### Ejecutar Test Específico
-
-```bash
-# Con cypress run
-npx cypress run --spec "cypress/e2e/homepage.cy.ts"
-
-# Con navegador específico
-npx cypress run --spec "cypress/e2e/homepage.cy.ts" --browser chrome
-
-# En modo headed (con ventana visible)
-npx cypress run --spec "cypress/e2e/homepage.cy.ts" --headed
-```
-
----
-
-## Debugging de Tests
-
-### 1. Usar `cy.debug()`
-
-```typescript
-it('debe hacer algo', () => {
-  cy.visit('/');
-  cy.get('[data-testid="user"]').debug(); // Pausa aquí
-  cy.contains('Welcome');
-});
-```
-
-Abre la consola de DevTools con el elemento seleccionado.
-
-### 2. Usar `cy.pause()`
-
-```typescript
-it('debe hacer algo', () => {
-  cy.visit('/');
-  cy.pause(); // Pausa la ejecución
-  cy.get('[data-testid="user"]');
-});
-```
-
-Pausa el test y te permite ejecutar comandos paso a paso.
-
-### 3. Logs Personalizados
-
-```typescript
-it('debe hacer algo', () => {
-  cy.log('🚀 Iniciando test de homepage');
-  cy.visit('/');
-  
-  cy.log('✅ Verificando hero section');
-  cy.get('[data-testid="hero"]').should('exist');
-  
-  cy.log('✅ Test completado');
-});
-```
-
-### 4. Inspeccionar Variables
-
-```typescript
-it('debe obtener texto', () => {
-  cy.get('[data-testid="title"]').then(($el) => {
-    const text = $el.text();
-    console.log('Texto encontrado:', text);
-    
-    // Puedes usar debugger
-    debugger;
-    
-    expect(text).to.include('Welcome');
-  });
-});
-```
-
-### 5. Screenshots Manuales
-
-```typescript
-it('debe verse correctamente', () => {
-  cy.visit('/');
-  cy.screenshot('homepage-inicial');
-  
-  cy.get('[data-testid="theme-toggle"]').click();
-  cy.screenshot('homepage-dark-mode');
-});
-```
-
-Guarda screenshots en `cypress/screenshots/`.
-
----
-
-## Errores Comunes y Soluciones
-
-### Error 1: Element Not Found
-
-```typescript
-// ❌ Error: Element not found
-cy.get('[data-testid="user"]').click();
-```
-
-**Causa**: El elemento no existe o aún no ha cargado.
-
-**Solución 1**: Aumentar timeout
-
-```typescript
-// ✅ Esperar hasta 10 segundos
-cy.get('[data-testid="user"]', { timeout: 10000 }).click();
-```
-
-**Solución 2**: Esperar condición previa
-
-```typescript
-// ✅ Esperar a que cargue primero
-cy.get('[data-testid="loading"]').should('not.exist');
-cy.get('[data-testid="user"]').click();
-```
-
-### Error 2: Element Not Visible
-
-```typescript
-// ❌ Error: Element is not visible
-cy.get('[data-testid="modal-button"]').click();
-```
-
-**Causa**: El elemento existe pero está oculto (display: none, visibility: hidden).
-
-**Solución**: Force click
-
-```typescript
-// ✅ Forzar click (usar con cuidado)
-cy.get('[data-testid="modal-button"]').click({ force: true });
-```
-
-### Error 3: Element Covered by Another Element
-
-```typescript
-// ❌ Error: Element is being covered
-cy.get('[data-testid="button"]').click();
-```
-
-**Causa**: Otro elemento (overlay, modal) está encima.
-
-**Solución**: Cerrar overlay primero
-
-```typescript
-// ✅ Cerrar overlay antes
-cy.get('[data-testid="overlay-close"]').click();
-cy.get('[data-testid="button"]').click();
-```
-
-### Error 4: Cross-Origin Error
-
-```
-Cypress detected a cross-origin error
-```
-
-**Causa**: Navegaste a un dominio diferente.
-
-**Solución**: Usar cy.origin() o mockear navegación externa
-
-```typescript
-// ✅ Remover target="_blank" para evitar nueva pestaña
-cy.get('a[href="https://external.com"]')
-  .invoke('removeAttr', 'target')
-  .click();
-```
-
----
-
-## Mejores Prácticas para Primeros Tests
-
-### 1. ✅ Tests Independientes
-
-Cada test debe poder ejecutarse solo.
-
-```typescript
-// ✅ Bien - Test independiente
-it('debe mostrar usuario', () => {
-  cy.visit('/');
-  cy.login(); // Setup propio
-  cy.get('[data-testid="user"]').should('exist');
-});
-```
-
-### 2. ✅ Usar beforeEach para Setup Común
-
-```typescript
-describe('Dashboard', () => {
-  beforeEach(() => {
-    cy.login();
-    cy.visit('/dashboard');
-  });
-  
-  it('test 1', () => { /* dashboard listo */ });
-  it('test 2', () => { /* dashboard listo */ });
-});
-```
-
-### 3. ✅ Nombres Descriptivos
-
-```typescript
-// ❌ Mal
-it('test 1', () => {});
-
-// ✅ Bien
-it('debe mostrar mensaje de error cuando email es inválido', () => {});
-```
-
-### 4. ✅ Un Concepto por Test
-
-```typescript
-// ❌ Mal - Test hace demasiadas cosas
-it('debe funcionar el login y perfil y logout', () => {
-  cy.login();
-  cy.visit('/profile');
-  cy.logout();
-});
-
-// ✅ Bien - Tests separados
-it('debe permitir login', () => { cy.login(); });
-it('debe mostrar perfil', () => { cy.visit('/profile'); });
-it('debe permitir logout', () => { cy.logout(); });
-```
-
-### 5. ✅ No Uses Waits Fijos
-
-```typescript
-// ❌ Mal - Wait arbitrario
-cy.wait(5000);
-cy.get('[data-testid="data"]');
-
-// ✅ Bien - Wait inteligente
-cy.get('[data-testid="data"]', { timeout: 10000 }).should('exist');
-```
-
----
-
-## Próximos Pasos
-
-Ahora que dominas los tests básicos, avanza a:
-
-1. **[Selectores y Comandos](./selectors)** - Estrategias avanzadas de selección
-2. **[Testing de Formularios](./forms)** - Interacciones con inputs
-3. **[Intercepción de Requests](./intercept)** - Mockear APIs
-
-:::tip Práctica
-Escribe 3-5 tests para tu homepage antes de continuar. La práctica es clave para dominar Cypress.
-:::
-
----
-
-## Ejemplo Real: Proyecto Taller-Testing-Security
-
-Veamos cómo se aplican estos conceptos en el proyecto real **Taller-Testing-Security**:
-
-### Test de Landing Page
+### Crear el archivo
 
 ```typescript
 // cypress/e2e/landing.cy.ts
@@ -651,36 +50,39 @@ describe('Landing Page', () => {
     cy.visit('/');
   });
 
-  it('debe cargar la landing page correctamente', () => {
-    // Verificar que estamos en la landing
+  it('debe cargar la página correctamente', () => {
+    // Verificar que estamos en la URL correcta
     cy.url().should('eq', Cypress.config().baseUrl + '/');
     
-    // La landing tiene un título h1
+    // Verificar que existe un título
     cy.get('h1').should('be.visible');
   });
 
-  it('debe mostrar el header con navegación', () => {
+  it('debe mostrar navegación', () => {
     // Verificar links de navegación
     cy.contains(/home|inicio/i).should('be.visible');
     cy.contains(/dashboard/i).should('be.visible');
-    cy.contains(/admin/i).should('be.visible');
-  });
-
-  it('debe permitir navegar al dashboard', () => {
-    // Mockear APIs antes de navegar
-    cy.intercept('GET', '**/v1/aboutme/', { fixture: 'aboutme.json' }).as('getAboutMe');
-    cy.intercept('GET', '**/v1/projects/', { fixture: 'projects.json' }).as('getProjects');
-    
-    // Click en el link del dashboard
-    cy.contains(/dashboard/i).click();
-    
-    // Verificar que navegamos correctamente
-    cy.url().should('include', '/dashboard');
   });
 });
 ```
 
-### Test de Login Page
+### Ejecutar el test
+
+```bash
+# Modo interactivo
+npm run test:e2e:open
+
+# Modo headless
+npm run test:e2e
+```
+
+---
+
+## Test 2: Formulario de Login
+
+El login es una funcionalidad crítica. Vamos a testear varios escenarios.
+
+### Archivo de test
 
 ```typescript
 // cypress/e2e/auth/login.cy.ts
@@ -691,35 +93,39 @@ describe('Login Page', () => {
     cy.visit('/login');
   });
 
-  describe('UI Elements', () => {
+  describe('Elementos del formulario', () => {
     
-    it('debe mostrar el formulario de login correctamente', () => {
-      // Verificar elementos del formulario
+    it('debe mostrar los campos del formulario', () => {
       cy.get('input[name="email"]').should('be.visible');
       cy.get('input[name="password"]').should('be.visible');
       cy.get('input[type="submit"]').should('be.visible');
     });
   });
 
-  describe('Validación de Formulario', () => {
+  describe('Validación', () => {
     
-    it('debe mostrar error cuando los campos están vacíos', () => {
-      // Submit sin llenar campos
+    it('debe mostrar error con campos vacíos', () => {
+      // Submit sin llenar
       cy.get('input[type="submit"]').click();
       
-      // Verificar mensaje de error
-      cy.contains(/username|password|email|usuario|contraseña/i).should('be.visible');
+      // Debe mostrar mensaje de error
+      cy.contains(/username|password|email/i).should('be.visible');
+    });
+
+    it('debe mostrar error solo con email', () => {
+      cy.get('input[name="email"]').type('test@example.com');
+      cy.get('input[type="submit"]').click();
+      
+      // Error porque falta password
+      cy.contains(/password|contraseña/i).should('be.visible');
     });
   });
 
-  describe('Login con API Mockeada', () => {
+  describe('Login con API mockeada', () => {
     
-    it('debe hacer login exitoso y redirigir a /admin', () => {
-      // Mockear respuesta exitosa
-      cy.intercept('POST', '**/auth/login', {
-        statusCode: 200,
-        body: { token: 'test-jwt-token' }
-      }).as('loginSuccess');
+    it('debe hacer login exitoso', () => {
+      // Mockear respuesta de la API
+      cy.mockLoginApi({ success: true });
       
       // Llenar formulario
       cy.get('input[name="email"]').type('test@example.com');
@@ -731,36 +137,175 @@ describe('Login Page', () => {
       
       // Verificar redirección
       cy.url().should('include', '/admin');
-      
-      // Verificar token guardado
-      cy.window().its('localStorage.token').should('eq', 'test-jwt-token');
     });
 
     it('debe mostrar error con credenciales inválidas', () => {
-      // Mockear error de autenticación
-      cy.intercept('POST', '**/auth/login', {
-        statusCode: 401,
-        body: { error: 'Invalid credentials' }
-      }).as('loginError');
+      // Mockear error
+      cy.mockLoginApi({ success: false });
       
-      // Llenar formulario con datos incorrectos
       cy.get('input[name="email"]').type('wrong@example.com');
-      cy.get('input[name="password"]').type('wrongpassword');
+      cy.get('input[name="password"]').type('wrongpass');
       cy.get('input[type="submit"]').click();
       
       cy.wait('@loginError');
       
-      // Verificar que seguimos en login
+      // Seguimos en login
       cy.url().should('include', '/login');
       
-      // Verificar mensaje de error
-      cy.contains(/invalid|error|inválid/i).should('be.visible');
+      // Muestra error
+      cy.contains(/invalid|error/i).should('be.visible');
     });
   });
 });
 ```
 
-### Fixtures del Proyecto
+:::info Custom Command
+`cy.mockLoginApi()` es un custom command que definimos en `cypress/support/commands.ts`. Simplifica el mockeo de la API de login.
+:::
+
+---
+
+## Test 3: Dashboard
+
+El dashboard carga datos de dos APIs: `aboutme` y `projects`.
+
+### Test de Dashboard
+
+```typescript
+// cypress/e2e/dashboard/dashboard.cy.ts
+
+describe('Dashboard Page', () => {
+  
+  describe('Carga de datos', () => {
+    
+    beforeEach(() => {
+      // Mockear las APIs del dashboard
+      cy.mockDashboardApi();
+    });
+
+    it('debe cargar y mostrar el perfil', () => {
+      cy.visit('/dashboard');
+      
+      // Esperar a que las APIs respondan
+      cy.wait(['@getAboutMe', '@getProjects']);
+      
+      // Verificar que se muestra la información
+      cy.contains('Test User').should('be.visible');
+    });
+
+    it('debe mostrar los proyectos', () => {
+      cy.visit('/dashboard');
+      cy.wait(['@getAboutMe', '@getProjects']);
+      
+      // Verificar que hay al menos un proyecto
+      cy.contains('Test Project').should('be.visible');
+    });
+  });
+
+  describe('Estados de carga', () => {
+    
+    it('debe mostrar loading mientras carga', () => {
+      // Mockear con delay
+      cy.mockDashboardApi({ delay: 1000 });
+      
+      cy.visit('/dashboard');
+      
+      // Verificar que aparece el loader
+      cy.contains(/loading|cargando/i).should('be.visible');
+      
+      // Esperar a que termine
+      cy.wait(['@getAboutMe', '@getProjects']);
+      
+      // Loader desaparece
+      cy.contains(/loading|cargando/i).should('not.exist');
+    });
+  });
+
+  describe('Manejo de errores', () => {
+    
+    it('debe mostrar error cuando la API falla', () => {
+      // Mockear error
+      cy.mockDashboardApi({ error: true });
+      
+      cy.visit('/dashboard');
+      
+      // Verificar mensaje de error
+      cy.contains(/error/i).should('be.visible');
+    });
+  });
+});
+```
+
+---
+
+## Test 4: Flujo Completo de Usuario
+
+Este test simula el journey completo de un usuario.
+
+### Test de User Journey
+
+```typescript
+// cypress/e2e/flows/user-journey.cy.ts
+
+describe('Flujo de Usuario', () => {
+
+  describe('Usuario anónimo', () => {
+    
+    it('debe navegar de landing a dashboard', () => {
+      // Mockear APIs
+      cy.intercept('GET', '**/v1/aboutme/', { fixture: 'aboutme.json' }).as('getAboutMe');
+      cy.intercept('GET', '**/v1/projects/', { fixture: 'projects.json' }).as('getProjects');
+      
+      // Empezar en landing
+      cy.visit('/');
+      
+      // Click en Dashboard
+      cy.contains(/dashboard/i).click();
+      
+      // Verificar navegación
+      cy.url().should('include', '/dashboard');
+      
+      // Esperar datos
+      cy.wait(['@getAboutMe', '@getProjects']);
+      
+      // Verificar contenido
+      cy.contains('Lucas Fernandez').should('be.visible');
+    });
+  });
+
+  describe('Usuario autenticado', () => {
+    
+    beforeEach(() => {
+      cy.mockLoginApi({ success: true });
+      cy.mockDashboardApi();
+    });
+
+    it('debe hacer login y acceder a admin', () => {
+      // Ir a login
+      cy.visit('/login');
+      
+      // Hacer login
+      cy.get('input[name="email"]').type('test@example.com');
+      cy.get('input[name="password"]').type('password123');
+      cy.get('input[type="submit"]').click();
+      
+      // Esperar login
+      cy.wait('@loginSuccess');
+      
+      // Verificar que estamos en admin
+      cy.url().should('include', '/admin');
+    });
+  });
+});
+```
+
+---
+
+## Usar Fixtures
+
+Los fixtures son datos mock en formato JSON que puedes reutilizar.
+
+### Archivo de fixture
 
 ```json
 // cypress/fixtures/users.json
@@ -776,43 +321,129 @@ describe('Login Page', () => {
 }
 ```
 
-```json
-// cypress/fixtures/aboutme.json
-{
-  "_id": "507f1f77bcf86cd799439011",
-  "name": "Lucas Fernandez",
-  "birthday": 631152000000,
-  "nationality": "Spanish",
-  "job": "Software Developer",
-  "github": "https://github.com/lucferbux"
-}
+### Usar en tests
+
+```typescript
+it('debe usar datos de fixture', () => {
+  cy.mockLoginApi({ success: true });
+  
+  // Cargar fixture
+  cy.fixture('users').then((users) => {
+    cy.get('input[name="email"]').type(users.validUser.email);
+    cy.get('input[name="password"]').type(users.validUser.password);
+    cy.get('input[type="submit"]').click();
+  });
+  
+  cy.wait('@loginSuccess');
+});
 ```
 
-```json
-// cypress/fixtures/projects.json
-[
-  {
-    "_id": "507f1f77bcf86cd799439012",
-    "title": "Taller Testing & Security",
-    "description": "Proyecto educativo sobre testing y seguridad",
-    "version": "1.0.0",
-    "link": "https://github.com/lucferbux/Taller-Testing-Security",
-    "tag": "education",
-    "timestamp": 1700000000000
-  }
-]
-```
+---
+
+## Debugging
+
+### Pausar ejecución
+
+```typescript
+it('debug test', () => {
+  cy.visit('/');
+  cy.pause(); // Pausa aquí - puedes continuar paso a paso
+  cy.get('h1').should('be.visible');
+});
 ```
 
-## Ejecutar Tests
+### Inspeccionar elemento
 
-```bash
-# Modo interactivo (recomendado para desarrollo)
-npm run cy:open
-
-# Modo headless (CI/CD)
-npm run cy:run
-
-# Con navegador específico
-npm run cy:run:chrome
+```typescript
+it('debug element', () => {
+  cy.get('[data-testid="user"]').debug(); // Abre DevTools
+});
 ```
+
+### Logs personalizados
+
+```typescript
+it('with logs', () => {
+  cy.log('🚀 Iniciando test');
+  cy.visit('/');
+  cy.log('✅ Página cargada');
+});
+```
+
+### Screenshots
+
+```typescript
+it('take screenshots', () => {
+  cy.visit('/');
+  cy.screenshot('homepage-inicial');
+  
+  cy.get('button').click();
+  cy.screenshot('despues-de-click');
+});
+```
+
+---
+
+## Errores Comunes
+
+### Element not found
+
+```typescript
+// ❌ El elemento no existe o no ha cargado
+cy.get('[data-testid="user"]').click();
+
+// ✅ Aumentar timeout
+cy.get('[data-testid="user"]', { timeout: 10000 }).click();
+
+// ✅ Esperar a que algo desaparezca primero
+cy.get('[data-testid="loading"]').should('not.exist');
+cy.get('[data-testid="user"]').click();
+```
+
+### Element not visible
+
+```typescript
+// ❌ Elemento existe pero está oculto
+cy.get('button').click();
+
+// ✅ Forzar click (usar con cuidado)
+cy.get('button').click({ force: true });
+```
+
+### No uses waits fijos
+
+```typescript
+// ❌ Wait arbitrario
+cy.wait(5000);
+
+// ✅ Wait inteligente - esperar a que elemento exista
+cy.get('[data-testid="result"]', { timeout: 10000 }).should('exist');
+
+// ✅ Wait a request
+cy.wait('@apiRequest');
+```
+
+---
+
+## Resumen de Comandos Básicos
+
+| Comando | Descripción |
+|---------|-------------|
+| `cy.visit('/')` | Navegar a URL |
+| `cy.get('selector')` | Obtener elemento |
+| `cy.contains('texto')` | Buscar por texto |
+| `cy.click()` | Click en elemento |
+| `cy.type('texto')` | Escribir texto |
+| `cy.should('be.visible')` | Verificar estado |
+| `cy.wait('@alias')` | Esperar request |
+| `cy.url()` | Obtener URL actual |
+
+---
+
+## Próximos Pasos
+
+Ahora que sabes escribir tests básicos:
+
+1. **[Selectores](./selectors)** - Estrategias para encontrar elementos
+2. **[Formularios](./forms)** - Testing de inputs y validaciones
+3. **[Intercepción](./intercept)** - Mockear APIs
