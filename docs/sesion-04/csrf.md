@@ -1,645 +1,442 @@
 ---
-sidebar_position: 6
+sidebar_position: 3
 title: "Cross-Site Request Forgery (CSRF)"
 ---
 
 # Cross-Site Request Forgery (CSRF)
 
-## 🎯 ¿Qué es CSRF?
+## ¿Qué es CSRF?
 
-**Cross-Site Request Forgery (CSRF)** es un ataque que **fuerza a un usuario autenticado** a ejecutar acciones no deseadas en una aplicación web en la que está autenticado. El atacante engaña al navegador del usuario para que envíe requests maliciosos usando las credenciales de sesión del usuario.
+Cross-Site Request Forgery (CSRF, también pronunciado "sea-surf") es un ataque que fuerza a usuarios autenticados a ejecutar acciones no deseadas en una aplicación web en la que están actualmente logueados. A diferencia de XSS que explota la confianza del usuario en un sitio, CSRF explota la confianza que un sitio tiene en el navegador del usuario.
 
-**¿Por qué funciona?**
+El ataque funciona porque los navegadores envían automáticamente las cookies de autenticación con cada petición al dominio correspondiente, sin importar desde qué página se originó la petición. Un atacante puede aprovechar esto para crear peticiones maliciosas que el servidor interpreta como legítimas.
 
-Los navegadores **envían automáticamente cookies** con cada request al dominio correspondiente. Si estás autenticado en `banco.com`, TODAS las peticiones a `banco.com` incluyen tu cookie de sesión, **incluso si vienen de otro sitio**.
+### ¿Por qué es peligroso?
+
+CSRF es particularmente peligroso porque:
+
+1. **Es invisible para la víctima**: El ataque ocurre en segundo plano, sin interacción visible del usuario más allá de visitar una página.
+
+2. **Usa credenciales legítimas**: Desde la perspectiva del servidor, la petición viene de un usuario autenticado con todas sus credenciales.
+
+3. **Es difícil de detectar**: Los logs del servidor muestran una petición normal de un usuario real.
+
+4. **Afecta a cualquier acción**: Cambio de email, cambio de contraseña, transferencias bancarias, eliminación de datos, cualquier acción que el usuario pueda hacer.
 
 ---
 
-## 🔍 Anatomía de un Ataque CSRF
+## Anatomía de un Ataque CSRF
 
-### Escenario Real: Transferencia Bancaria
+### Escenario: Transferencia bancaria
 
-**Flujo del ataque paso a paso**:
+Imaginemos que un usuario tiene una sesión activa en su banco online:
 
+```text
+┌─────────────────────────────────────────────────────────────────────┐
+│                        ATAQUE CSRF                                  │
+├─────────────────────────────────────────────────────────────────────┤
+│                                                                     │
+│  PREPARACIÓN:                                                       │
+│  El usuario está autenticado en banco.com                           │
+│  Tiene una cookie de sesión válida: session=abc123xyz               │
+│                                                                     │
+│  PASO 1: El atacante crea una página maliciosa                      │
+│  ┌──────────────────────────────────────────────────────────────┐   │
+│  │                   evil-site.com/free-iphone.html              │   │
+│  │                                                               │   │
+│  │  <html>                                                       │   │
+│  │    <head><title>¡iPhone 15 Gratis!</title></head>             │   │
+│  │    <body>                                                     │   │
+│  │      <h1>¡Felicidades! Has ganado un iPhone 15</h1>           │   │
+│  │      <p>Haz clic abajo para reclamar tu premio...</p>         │   │
+│  │                                                               │   │
+│  │      <!-- Formulario oculto que se envía automáticamente -->  │   │
+│  │      <form action="https://banco.com/transfer"                │   │
+│  │            method="POST" style="display:none">                │   │
+│  │        <input name="to" value="cuenta-atacante"/>             │   │
+│  │        <input name="amount" value="10000"/>                   │   │
+│  │      </form>                                                  │   │
+│  │                                                               │   │
+│  │      <script>                                                 │   │
+│  │        document.forms[0].submit();                            │   │
+│  │      </script>                                                │   │
+│  │    </body>                                                    │   │
+│  │  </html>                                                      │   │
+│  └──────────────────────────────────────────────────────────────┘   │
+│                                                                     │
+│  PASO 2: El atacante envía el link a la víctima                     │
+│  (email, mensaje, anuncio, redes sociales, etc.)                    │
+│                                                                     │
+│  PASO 3: La víctima visita la página                                │
+│  ┌─────────┐     GET evil-site.com/free-iphone.html                 │
+│  │ Víctima │ ────────────────────────────────────────►              │
+│  └─────────┘                                                        │
+│       │                                                             │
+│       │  El navegador carga la página y ejecuta el JavaScript       │
+│       │  que envía el formulario automáticamente                    │
+│       ▼                                                             │
+│  PASO 4: El formulario hace POST a banco.com                        │
+│  ┌─────────┐     POST /transfer                     ┌──────────┐    │
+│  │Navegador│ ────────────────────────────────────►  │ banco.com│    │
+│  │         │     Cookie: session=abc123xyz          │          │    │
+│  │         │     to=cuenta-atacante                 │          │    │
+│  │         │     amount=10000                       │          │    │
+│  └─────────┘                                        └──────────┘    │
+│                                                          │          │
+│  PASO 5: El banco ve una petición válida                 │          │
+│  - Sesión válida ✓                                       │          │
+│  - Usuario autenticado ✓                                 │          │
+│  - Datos completos ✓                                     ▼          │
+│                                              ┌──────────────────┐   │
+│                                              │ Transferencia de │   │
+│                                              │ $10,000 realizada│   │
+│                                              │ a cuenta-atacante│   │
+│                                              └──────────────────┘   │
+│                                                                     │
+└─────────────────────────────────────────────────────────────────────┘
 ```
-┌──────────────────────────────────────────────────────────────────────┐
-│                         ATAQUE CSRF                                  │
-└──────────────────────────────────────────────────────────────────────┘
 
-1️⃣ CONFIGURACIÓN INICIAL
-   Usuario → banco.com/login
-   ✅ Login exitoso
-   🍪 Cookie de sesión: session_id=abc123
+### Variantes de CSRF
 
-2️⃣ USUARIO VISITA SITIO MALICIOSO
-   Usuario navega a → sitiomalicioso.com
-   (En otra pestaña, banco.com sigue con sesión activa)
+El ataque puede tomar muchas formas, algunas más sigilosas que otras:
 
-3️⃣ SITIO MALICIOSO CONTIENE CÓDIGO OCULTO
-   <!-- sitiomalicioso.com -->
-   <img src="https://banco.com/transfer?to=atacante&amount=10000" />
-   
-   O peor aún:
-   <form action="https://banco.com/transfer" method="POST">
-     <input name="to" value="atacante" />
-     <input name="amount" value="10000" />
-   </form>
-   <script>document.forms[0].submit();</script>
-
-4️⃣ NAVEGADOR ENVÍA REQUEST AUTOMÁTICAMENTE
-   Request a banco.com/transfer
-   Headers:
-     Cookie: session_id=abc123  ← ¡Cookie válida!
-     Referer: sitiomalicioso.com
-   
-5️⃣ BANCO.COM PROCESA LA TRANSFERENCIA
-   ✅ Sesión válida detectada
-   ✅ Usuario autenticado
-   ❌ NO VERIFICA origen del request
-   → Transferencia ejecutada
-
-6️⃣ RESULTADO
-   💰 $10,000 transferidos al atacante
-   😱 Usuario no se dio cuenta hasta revisar su cuenta
+**1. Formulario oculto con auto-submit (como el ejemplo anterior)**
+```html
+<form action="https://target.com/api/action" method="POST" style="display:none">
+  <input name="data" value="malicious"/>
+</form>
+<script>document.forms[0].submit();</script>
 ```
 
-**Código vulnerable en el servidor**:
+**2. Imagen con URL de acción (solo para GET)**
+```html
+<!-- Se carga automáticamente, sin interacción del usuario -->
+<img src="https://target.com/api/delete?id=123" width="0" height="0"/>
+```
 
+**3. Iframe oculto**
+```html
+<iframe src="https://target.com/api/action?param=value" style="display:none"></iframe>
+```
+
+**4. JavaScript fetch (si CORS lo permite)**
 ```javascript
-// ❌ VULNERABLE: Procesa transferencias sin verificar origen
-app.post('/transfer', authenticate, async (req, res) => {
-  const { to, amount } = req.body;
-  
-  // Usuario está autenticado (middleware authenticate pasó)
-  const user = req.user;
-  
-  // NO VERIFICA si el request vino de sitio legítimo
-  await transferMoney(user.id, to, amount);
-  
-  res.json({ success: true, message: 'Transferencia exitosa' });
+fetch('https://target.com/api/action', {
+  method: 'POST',
+  credentials: 'include',  // Envía cookies
+  body: JSON.stringify({ action: 'malicious' }),
+  headers: { 'Content-Type': 'application/json' }
 });
-
-// También vulnerable con GET (peor aún)
-app.get('/transfer', authenticate, async (req, res) => {
-  const { to, amount } = req.query;
-  await transferMoney(req.user.id, to, amount);
-  res.json({ success: true });
-});
-// Ataque simple: <img src="https://banco.com/transfer?to=atacante&amount=1000">
 ```
 
 ---
 
-## 🚨 Casos Reales de Ataques CSRF
+## Escenario en Taller-Testing-Security
 
-**YouTube (2008)**:
-- CSRF permitía que atacantes modificaran casi cualquier configuración de cuenta
-- Podían suscribir usuarios a canales, marcar videos como favoritos, enviar mensajes
+Imaginemos que un atacante ha conseguido el token JWT de un usuario del proyecto (mediante XSS u otro vector). Con ese token, puede realizar cualquier acción autenticada:
 
-**Netflix (2006)**:
-- CSRF permitía cambiar dirección de envío de DVDs
-- Atacante podía recibir DVDs rentados por la víctima
-
-**ING Direct (2008)**:
-- CSRF permitía agregar direcciones de email a cuentas bancarias
-- Atacante podía recibir notificaciones y resetear passwords
-
----
-
-## 🛡️ Prevención de CSRF
-
-### **1. CSRF Tokens (Synchronizer Token Pattern)** 🎫
-
-**Concepto**: Generar token único por sesión/request que el servidor valida.
-
-#### Implementación con csurf
+### Obtener información del perfil
 
 ```bash
-npm install csurf cookie-parser
+# El atacante tiene el token robado
+TOKEN="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+
+# Obtener toda la información del perfil
+curl -X GET 'http://localhost:4000/v1/aboutme' \
+  --header "Authorization: Bearer $TOKEN"
+
+# Respuesta:
+# {
+#   "id": "6507d1a2c1a2b3c4d5e6f7a8",
+#   "email": "victima@example.com",
+#   "name": "Usuario Víctima",
+#   ...
+# }
 ```
 
-```javascript
-import csrf from 'csurf';
-import cookieParser from 'cookie-parser';
+### Modificar el perfil
 
-app.use(cookieParser());
+```bash
+# Cambiar el email del usuario (hijack de cuenta)
+curl -X PUT 'http://localhost:4000/v1/aboutme' \
+  --header "Authorization: Bearer $TOKEN" \
+  --header "Content-Type: application/json" \
+  --data '{
+    "name": "Cuenta Comprometida",
+    "email": "atacante@evil.com"
+  }'
 
-// Configurar protección CSRF
-const csrfProtection = csrf({ 
-  cookie: true // Token almacenado en cookie
-});
-
-// Aplicar globalmente a todas las rutas que modifican datos
-app.use(csrfProtection);
-
-// Ruta para obtener el token CSRF
-app.get('/api/csrf-token', (req, res) => {
-  res.json({ csrfToken: req.csrfToken() });
-});
-
-// Rutas protegidas automáticamente
-app.post('/api/transfer', async (req, res) => {
-  // csurf middleware ya validó el token
-  const { to, amount } = req.body;
-  await transferMoney(req.user.id, to, amount);
-  res.json({ success: true });
-});
-
-app.put('/api/settings', async (req, res) => {
-  // También protegido automáticamente
-  await updateSettings(req.user.id, req.body);
-  res.json({ success: true });
-});
-
-// Manejo de errores CSRF
-app.use((err, req, res, next) => {
-  if (err.code === 'EBADCSRFTOKEN') {
-    res.status(403).json({ 
-      error: 'Invalid CSRF token',
-      message: 'Form submission rejected. Please refresh and try again.'
-    });
-  } else {
-    next(err);
-  }
-});
+# Ahora el atacante puede usar "olvidé mi contraseña"
+# con su propio email para tomar control total
 ```
 
-**En el Frontend (React)**:
+### Eliminar todos los proyectos
 
-```typescript
-// hooks/useCsrfToken.ts
-import { useState, useEffect } from 'react';
+```bash
+# Primero, listar los proyectos
+curl -X GET 'http://localhost:4000/v1/projects' \
+  --header "Authorization: Bearer $TOKEN"
 
-export function useCsrfToken() {
-  const [csrfToken, setCsrfToken] = useState<string>('');
-  
-  useEffect(() => {
-    async function fetchToken() {
-      const response = await fetch('/api/csrf-token', {
-        credentials: 'include', // Incluir cookies
-      });
-      const data = await response.json();
-      setCsrfToken(data.csrfToken);
-    }
-    
-    fetchToken();
-  }, []);
-  
-  return csrfToken;
-}
+# Luego eliminarlos uno por uno
+curl -X DELETE 'http://localhost:4000/v1/projects/6507d1a2c1a2b3c4d5e6f7a8' \
+  --header "Authorization: Bearer $TOKEN"
 
-// components/TransferForm.tsx
-import { useCsrfToken } from '../hooks/useCsrfToken';
+curl -X DELETE 'http://localhost:4000/v1/projects/6507d1a2c1a2b3c4d5e6f7a9' \
+  --header "Authorization: Bearer $TOKEN"
 
-function TransferForm() {
-  const csrfToken = useCsrfToken();
-  const [formData, setFormData] = useState({ to: '', amount: 0 });
-  
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault();
-    
-    const response = await fetch('/api/transfer', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'CSRF-Token': csrfToken, // Header con token
-      },
-      credentials: 'include',
-      body: JSON.stringify(formData),
-    });
-    
-    if (response.ok) {
-      alert('Transferencia exitosa');
-    } else if (response.status === 403) {
-      alert('Token CSRF inválido. Por favor recarga la página.');
-    }
-  }
-  
-  return (
-    <form onSubmit={handleSubmit}>
-      <input 
-        value={formData.to}
-        onChange={(e) => setFormData({ ...formData, to: e.target.value })}
-        placeholder="Destinatario"
-      />
-      <input 
-        type="number"
-        value={formData.amount}
-        onChange={(e) => setFormData({ ...formData, amount: +e.target.value })}
-        placeholder="Cantidad"
-      />
-      <button type="submit">Transferir</button>
-    </form>
-  );
-}
+# Todos los datos del usuario, eliminados
 ```
 
-**Alternativa: Token en hidden input (SSR)**:
+### Crear proyectos spam
 
-```html
-<!-- Generado en servidor -->
-<form action="/transfer" method="POST">
-  <input type="hidden" name="_csrf" value="<%= csrfToken %>" />
-  <input name="to" placeholder="Destinatario" />
-  <input name="amount" placeholder="Cantidad" />
-  <button type="submit">Transferir</button>
-</form>
+```bash
+# Crear contenido malicioso en la cuenta de la víctima
+curl -X POST 'http://localhost:4000/v1/projects' \
+  --header "Authorization: Bearer $TOKEN" \
+  --header "Content-Type: application/json" \
+  --data '{
+    "title": "Proyecto Malicioso",
+    "description": "<script>window.location=\"https://phishing.com\"</script>",
+    "link": "https://malware-distribution.com"
+  }'
 ```
 
 ---
 
-### **2. SameSite Cookies** 🍪
+## Prevención de CSRF
 
-**Concepto**: Cookies con atributo `SameSite` NO se envían en requests cross-site.
+### 1. Cookies SameSite
 
-```javascript
-app.use(session({
-  secret: process.env.SESSION_SECRET,
-  name: 'sessionId',
-  cookie: {
-    httpOnly: true,
-    secure: process.env.NODE_ENV === 'production', // Solo HTTPS
-    sameSite: 'strict', // Clave para prevenir CSRF
-    maxAge: 24 * 60 * 60 * 1000, // 24 horas
-  },
-  resave: false,
-  saveUninitialized: false,
-}));
+El atributo `SameSite` de las cookies es la defensa más efectiva contra CSRF. Le indica al navegador cuándo enviar la cookie:
 
-// Para JWTs en cookies
+```typescript
+// Configuración en Express
 res.cookie('token', jwtToken, {
   httpOnly: true,
   secure: true,
-  sameSite: 'strict',
-  maxAge: 3600000, // 1 hora
+  sameSite: 'strict'  // ← Clave para prevenir CSRF
 });
 ```
 
-**Valores de SameSite**:
+**Valores de SameSite:**
 
-| Valor | Comportamiento | Cuándo usar |
-|-------|---------------|-------------|
-| `strict` | Cookie NUNCA se envía en requests cross-site | Máxima seguridad. Usar para sesiones/auth |
-| `lax` | Cookie se envía en navegación top-level (GET links), NO en forms POST cross-site | Balance seguridad/UX. Permite links externos |
-| `none` | Cookie siempre se envía (requiere `secure: true`) | APIs de terceros, iframes autorizados |
+| Valor | Comportamiento | Protección CSRF |
+|-------|----------------|-----------------|
+| `strict` | Cookie NUNCA se envía en requests cross-origin, ni siquiera en navegación con link | ✅ Máxima |
+| `lax` | Cookie se envía en navegación top-level (links) pero NO en POSTs cross-origin | ✅ Buena |
+| `none` | Cookie siempre se envía (requiere `secure: true`) | ❌ Ninguna |
 
-**Ejemplos**:
+**¿Cuándo usar cada valor?**
 
-```javascript
-// SameSite=Strict (más seguro)
-// Usuario en sitiomalicioso.com hace click en link a banco.com
-// → Cookie NO se envía, usuario debe login de nuevo
+- **`strict`**: Para aplicaciones donde la seguridad es crítica y no necesitas que links externos mantengan la sesión. El usuario tendrá que re-autenticarse si llega desde otro sitio.
 
-// SameSite=Lax (balance)
-// Usuario en email.com hace click en link a banco.com
-// → Cookie SÍ se envía (navegación top-level GET)
-// Formulario en sitiomalicioso.com hace POST a banco.com
-// → Cookie NO se envía (cross-site POST bloqueado)
+- **`lax`**: Balance entre seguridad y usabilidad. Links desde otros sitios mantienen la sesión, pero forms POST no. Es el valor por defecto en navegadores modernos.
 
-// SameSite=None (menos seguro)
-// Cualquier sitio puede enviar requests con cookie
-// → Solo usar con secure=true y en casos específicos
-```
+- **`none`**: Solo para casos específicos como widgets embebidos o APIs que deben aceptar requests cross-origin. Requiere `secure: true`.
 
-**Testing SameSite**:
+### 2. CSRF Tokens
+
+Para aplicaciones que usan cookies de sesión tradicionales, implementa tokens CSRF:
 
 ```typescript
-// tests/csrf-samesite.test.ts
-import request from 'supertest';
-import app from '../app';
+// Instalación
+// npm install csurf
 
-describe('SameSite Cookies', () => {
-  it('debe configurar SameSite=strict en cookies de sesión', async () => {
-    const res = await request(app)
-      .post('/api/login')
-      .send({ email: 'test@example.com', password: 'password123' });
-    
-    const cookies = res.headers['set-cookie'];
-    expect(cookies[0]).toContain('SameSite=Strict');
-    expect(cookies[0]).toContain('HttpOnly');
-  });
-});
-```
-
----
-
-### **3. Double Submit Cookie Pattern** 🍪🍪
-
-**Concepto**: Token en cookie Y en request body/header deben coincidir.
-
-```javascript
-import crypto from 'crypto';
-
-// Middleware que genera y valida double-submit token
-function doubleSubmitCsrf(req, res, next) {
-  // Generar token si no existe
-  if (!req.cookies.csrfToken) {
-    const token = crypto.randomBytes(32).toString('hex');
-    res.cookie('csrfToken', token, {
-      httpOnly: false, // Debe ser accesible por JS
-      secure: true,
-      sameSite: 'strict',
-    });
-  }
-  
-  // Validar en métodos que modifican datos
-  if (['POST', 'PUT', 'DELETE', 'PATCH'].includes(req.method)) {
-    const tokenFromCookie = req.cookies.csrfToken;
-    const tokenFromHeader = req.headers['x-csrf-token'];
-    
-    if (!tokenFromCookie || tokenFromCookie !== tokenFromHeader) {
-      return res.status(403).json({ error: 'CSRF token mismatch' });
-    }
-  }
-  
-  next();
-}
-
-app.use(doubleSubmitCsrf);
-
-// Frontend lee cookie y la envía en header
-function getCookie(name: string): string | null {
-  const value = `; ${document.cookie}`;
-  const parts = value.split(`; ${name}=`);
-  if (parts.length === 2) return parts.pop()?.split(';').shift() || null;
-  return null;
-}
-
-async function makeSecureRequest(url: string, options: RequestInit) {
-  const csrfToken = getCookie('csrfToken');
-  
-  return fetch(url, {
-    ...options,
-    headers: {
-      ...options.headers,
-      'X-CSRF-Token': csrfToken || '',
-    },
-    credentials: 'include',
-  });
-}
-```
-
----
-
-### **4. Verificación de Origin/Referer Headers** 🔍
-
-**Concepto**: Validar que el request viene del mismo origen.
-
-```javascript
-function verifyOrigin(req, res, next) {
-  if (['POST', 'PUT', 'DELETE', 'PATCH'].includes(req.method)) {
-    const origin = req.headers.origin || req.headers.referer;
-    const allowedOrigins = [
-      'https://myapp.com',
-      'https://www.myapp.com',
-      process.env.NODE_ENV === 'development' ? 'http://localhost:3000' : null,
-    ].filter(Boolean);
-    
-    if (!origin) {
-      return res.status(403).json({ error: 'Missing origin header' });
-    }
-    
-    const originUrl = new URL(origin);
-    const isAllowed = allowedOrigins.some(allowed => {
-      const allowedUrl = new URL(allowed);
-      return originUrl.origin === allowedUrl.origin;
-    });
-    
-    if (!isAllowed) {
-      securityLogger.warn('CSRF attempt detected', {
-        origin,
-        ip: req.ip,
-        path: req.path,
-      });
-      return res.status(403).json({ error: 'Invalid origin' });
-    }
-  }
-  
-  next();
-}
-
-app.use(verifyOrigin);
-```
-
-**Limitaciones**:
-- Headers pueden ser omitidos en algunos casos (proxies, navegadores viejos)
-- No debe ser la ÚNICA defensa, combinar con tokens
-
----
-
-### **5. Re-autenticación para Acciones Críticas** 🔐
-
-**Concepto**: Solicitar password de nuevo para operaciones sensibles.
-
-```typescript
-// Middleware de re-autenticación
-async function requireReauth(req, res, next) {
-  const { password } = req.body;
-  
-  if (!password) {
-    return res.status(400).json({ 
-      error: 'Password required for this action' 
-    });
-  }
-  
-  const user = await User.findById(req.user.id);
-  const validPassword = await bcrypt.compare(password, user.passwordHash);
-  
-  if (!validPassword) {
-    securityLogger.warn('Failed re-authentication', {
-      userId: req.user.id,
-      ip: req.ip,
-    });
-    return res.status(401).json({ error: 'Invalid password' });
-  }
-  
-  next();
-}
-
-// Aplicar a acciones críticas
-app.post('/api/transfer-large', csrfProtection, requireReauth, async (req, res) => {
-  const { to, amount, password } = req.body;
-  
-  if (amount > 10000) {
-    // Ya validado por requireReauth
-    await transferMoney(req.user.id, to, amount);
-    res.json({ success: true });
-  } else {
-    res.status(400).json({ error: 'Amount exceeds limit' });
-  }
-});
-
-app.delete('/api/account', csrfProtection, requireReauth, async (req, res) => {
-  await deleteAccount(req.user.id);
-  res.json({ success: true });
-});
-```
-
----
-
-## 🧪 Testing CSRF Protection
-
-```typescript
-// tests/csrf.test.ts
-import request from 'supertest';
-import app from '../app';
-
-describe('CSRF Protection', () => {
-  let csrfToken: string;
-  let cookies: string[];
-  
-  beforeAll(async () => {
-    // Login para obtener sesión
-    const loginRes = await request(app)
-      .post('/api/login')
-      .send({ email: 'test@example.com', password: 'password123' });
-    
-    cookies = loginRes.headers['set-cookie'];
-    
-    // Obtener CSRF token
-    const tokenRes = await request(app)
-      .get('/api/csrf-token')
-      .set('Cookie', cookies);
-    
-    csrfToken = tokenRes.body.csrfToken;
-  });
-  
-  it('debe rechazar POST sin CSRF token', async () => {
-    const res = await request(app)
-      .post('/api/transfer')
-      .set('Cookie', cookies)
-      .send({ to: 'attacker', amount: 1000 });
-    
-    expect(res.status).toBe(403);
-    expect(res.body.error).toContain('CSRF');
-  });
-  
-  it('debe aceptar POST con CSRF token válido', async () => {
-    const res = await request(app)
-      .post('/api/transfer')
-      .set('Cookie', cookies)
-      .set('CSRF-Token', csrfToken)
-      .send({ to: 'recipient', amount: 100 });
-    
-    expect(res.status).toBe(200);
-    expect(res.body.success).toBe(true);
-  });
-  
-  it('debe rechazar CSRF token inválido', async () => {
-    const res = await request(app)
-      .post('/api/transfer')
-      .set('Cookie', cookies)
-      .set('CSRF-Token', 'invalid-token-123')
-      .send({ to: 'attacker', amount: 1000 });
-    
-    expect(res.status).toBe(403);
-  });
-  
-  it('debe configurar SameSite cookies', async () => {
-    const res = await request(app).post('/api/login').send({
-      email: 'test@example.com',
-      password: 'password123',
-    });
-    
-    const setCookies = res.headers['set-cookie'];
-    expect(setCookies[0]).toContain('SameSite=Strict');
-  });
-});
-```
-
----
-
-## 📋 Resumen: Checklist Anti-CSRF
-
-- [ ] **Implementar CSRF tokens** con csurf en rutas POST/PUT/DELETE
-- [ ] **Configurar SameSite=Strict** en cookies de sesión
-- [ ] **Validar Origin/Referer** headers en requests state-changing
-- [ ] **NO usar GET para acciones** que modifiquen datos
-- [ ] **Re-autenticación** para operaciones críticas (transfers, delete account)
-- [ ] **Testear protección CSRF** en suite de tests
-- [ ] **Educar usuarios** sobre phishing (no hacer click en links sospechosos)
-- [ ] **Logging** de intentos CSRF fallidos para detectar ataques
-
-:::tip Defense in Depth
-**Combina múltiples técnicas**:
-1. CSRF tokens (previene requests no autorizados)
-2. SameSite cookies (previene envío automático)
-3. Origin verification (doble verificación)
-4. Re-auth (última línea de defensa para acciones críticas)
-:::
-
-:::warning GET Requests
-**NUNCA uses GET para modificar datos**. GET debe ser idempotente y seguro. Usa POST/PUT/DELETE según corresponda.
-:::
-
-### 4.2 Prevención con CSRF Tokens
-
-```javascript
 import csrf from 'csurf';
 import cookieParser from 'cookie-parser';
 
+// Middleware
 app.use(cookieParser());
-
-// Configurar CSRF protection
 const csrfProtection = csrf({ cookie: true });
 
-// Ruta para obtener el token
+// Endpoint para obtener el token
 app.get('/api/csrf-token', csrfProtection, (req, res) => {
   res.json({ csrfToken: req.csrfToken() });
 });
 
-// Proteger rutas que modifican datos
+// Rutas protegidas requieren el token
 app.post('/api/transfer', csrfProtection, (req, res) => {
-  const { to, amount } = req.body;
-  // Realizar transferencia
-  res.json({ success: true });
+  // El middleware valida automáticamente que el token sea válido
+  // Si no lo es, devuelve 403 Forbidden
+  processTransfer(req.body);
 });
 ```
 
-**En el Frontend**:
+**Flujo del token CSRF:**
+
+```text
+┌─────────────────────────────────────────────────────────────────────┐
+│                     FLUJO DE TOKEN CSRF                             │
+├─────────────────────────────────────────────────────────────────────┤
+│                                                                     │
+│  1. Usuario carga la página                                         │
+│     ┌─────────┐     GET /app             ┌─────────┐                │
+│     │ Cliente │ ──────────────────────►  │ Servidor│                │
+│     └─────────┘                          └─────────┘                │
+│                                               │                     │
+│  2. Servidor envía la página + token CSRF    │                      │
+│     ┌─────────┐     HTML + csrfToken     ┌───┴─────┐                │
+│     │ Cliente │ ◄──────────────────────  │ Servidor│                │
+│     └─────────┘                          └─────────┘                │
+│          │                                                          │
+│  3. Usuario envía formulario con token                              │
+│     ┌─────────┐     POST /api/action     ┌─────────┐                │
+│     │ Cliente │ ──────────────────────►  │ Servidor│                │
+│     └─────────┘     + csrfToken          └─────────┘                │
+│                     + Cookie de sesión        │                     │
+│                                               │                     │
+│  4. Servidor valida: Cookie ✓ Token ✓         │                     │
+│     Procesa la petición                       ▼                     │
+│                                                                     │
+│  ─────────────────────────────────────────────────────────────────  │
+│                                                                     │
+│  INTENTO DE ATAQUE CSRF:                                            │
+│                                                                     │
+│  1. Atacante no puede obtener el token                              │
+│     (está en el DOM de otra página, Same-Origin Policy lo protege)  │
+│                                                                     │
+│  2. Atacante envía formulario SIN token                             │
+│     ┌─────────┐     POST /api/action     ┌─────────┐                │
+│     │Evil Site│ ──────────────────────►  │ Servidor│                │
+│     └─────────┘     Cookie ✓ (enviada)   └─────────┘                │
+│                     Token ✗ (faltante)        │                     │
+│                                               │                     │
+│  3. Servidor rechaza: 403 Forbidden           ▼                     │
+│     "Invalid CSRF token"                                            │
+│                                                                     │
+└─────────────────────────────────────────────────────────────────────┘
+```
+
+**Frontend: Incluir token en peticiones**
 
 ```typescript
-// Obtener token al cargar la app
-async function getCSRFToken(): Promise<string> {
-  const response = await fetch('/api/csrf-token');
-  const data = await response.json();
-  return data.csrfToken;
-}
+// 1. Obtener el token al cargar la app
+const response = await fetch('/api/csrf-token');
+const { csrfToken } = await response.json();
 
-// Incluir token en peticiones POST/PUT/DELETE
-async function transfer(to: string, amount: number) {
-  const csrfToken = await getCSRFToken();
-  
-  const response = await fetch('/api/transfer', {
+// 2. Incluir en todas las peticiones mutables
+async function makeSecureRequest(url: string, data: object) {
+  const response = await fetch(url, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      'CSRF-Token': csrfToken, // Header personalizado
+      'CSRF-Token': csrfToken  // ← Enviar el token
     },
-    body: JSON.stringify({ to, amount }),
+    credentials: 'include',
+    body: JSON.stringify(data)
   });
-  
   return response.json();
+}
+
+// 3. Con Axios, configurar interceptor global
+import axios from 'axios';
+
+// Obtener token
+const { data } = await axios.get('/api/csrf-token');
+axios.defaults.headers.common['CSRF-Token'] = data.csrfToken;
+```
+
+### 3. Verificar Origin y Referer
+
+Como capa adicional de defensa, verifica los headers Origin y Referer:
+
+```typescript
+function csrfProtectionMiddleware(
+  req: Request, 
+  res: Response, 
+  next: NextFunction
+) {
+  // Solo verificar métodos que modifican datos
+  if (['POST', 'PUT', 'DELETE', 'PATCH'].includes(req.method)) {
+    const origin = req.get('Origin');
+    const referer = req.get('Referer');
+    
+    // Lista de orígenes permitidos
+    const allowedOrigins = [
+      'https://myapp.com',
+      'https://www.myapp.com',
+      'http://localhost:3000'  // Solo en desarrollo
+    ];
+    
+    // Verificar Origin header
+    if (origin) {
+      if (!allowedOrigins.includes(origin)) {
+        return res.status(403).json({ 
+          error: 'CSRF protection: invalid origin' 
+        });
+      }
+    } 
+    // Si no hay Origin, verificar Referer
+    else if (referer) {
+      const refererUrl = new URL(referer);
+      if (!allowedOrigins.includes(refererUrl.origin)) {
+        return res.status(403).json({ 
+          error: 'CSRF protection: invalid referer' 
+        });
+      }
+    }
+    // Si no hay ni Origin ni Referer, puede ser sospechoso
+    // (algunos browsers/proxies los eliminan, así que no siempre bloquear)
+  }
+  
+  next();
 }
 ```
 
-### 4.3 SameSite Cookies
+### 4. Custom Headers (Double Submit)
 
-Otra capa de protección:
+Los formularios HTML simples no pueden enviar headers personalizados. Por tanto, requerir un header personalizado bloquea CSRF desde formularios:
 
-```javascript
-app.use(session({
-  secret: process.env.SESSION_SECRET,
-  cookie: {
-    httpOnly: true,
-    secure: process.env.NODE_ENV === 'production', // Solo HTTPS
-    sameSite: 'strict', // Previene envío cross-site
-    maxAge: 24 * 60 * 60 * 1000 // 24 horas
+```typescript
+// Backend: Requerir header personalizado
+app.use('/api', (req, res, next) => {
+  if (['POST', 'PUT', 'DELETE', 'PATCH'].includes(req.method)) {
+    const customHeader = req.get('X-Requested-With');
+    
+    if (customHeader !== 'XMLHttpRequest') {
+      return res.status(403).json({ 
+        error: 'Missing required header' 
+      });
+    }
   }
-}));
+  next();
+});
+
+// Frontend: Enviar el header en todas las peticiones
+fetch('/api/action', {
+  method: 'POST',
+  headers: {
+    'Content-Type': 'application/json',
+    'X-Requested-With': 'XMLHttpRequest'  // ← Header personalizado
+  },
+  body: JSON.stringify(data)
+});
 ```
 
-Valores de `sameSite`:
-- **strict**: Cookie nunca se envía en peticiones cross-site
-- **lax**: Cookie se envía en navegación top-level (enlaces, no AJAX)
-- **none**: Cookie se envía siempre (requiere `secure: true`)
+**¿Por qué funciona?**
+
+- Formularios HTML (`<form>`) no pueden enviar headers personalizados
+- JavaScript cross-origin no puede enviar headers personalizados sin CORS preflight
+- Si CORS no está configurado para permitirlo, el navegador bloquea la petición
+
+---
+
+## Checklist de Prevención CSRF
+
+```text
+□ Usar cookies SameSite=strict o SameSite=lax
+□ Implementar tokens CSRF para formularios tradicionales
+□ Verificar headers Origin/Referer en peticiones sensibles
+□ Requerir headers personalizados para APIs (X-Requested-With)
+□ Configurar CORS restrictivamente (no usar origin: '*' con credentials)
+□ No usar GET para acciones que modifican datos
+□ Implementar re-autenticación para acciones críticas (cambiar password, transferencias)
+□ Usar token JWT en headers en lugar de cookies cuando sea posible
+□ Establecer tiempos de expiración cortos para sesiones
+```
+
+---
+
+## Próximo Paso
+
+Ahora que entiendes CSRF, veamos otra categoría de vulnerabilidades relacionadas con la manipulación de datos de entrada. Continúa con **[Inyecciones NoSQL](./injection)**.
